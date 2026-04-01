@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # coding=utf-8
 import sys
 from bottle import run, get, post, request,response
@@ -217,7 +217,7 @@ def sendMsg(content):
 
 
 def turnTsToTime(initValue):
-    if str(type(initValue))=="<class 'str'>":
+    if isinstance(initValue, str):
         timeArray = time.strptime(initValue, "%Y-%m-%d %H:%M:%S")
         timestamp = time.mktime(timeArray)
         return timestamp

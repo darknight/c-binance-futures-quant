@@ -3,8 +3,6 @@ import websocket
 import gzip
 import ssl
 import logging
-from urllib import parse
-import urllib.parse
 
 from binance_f.base.printtime import PrintDate
 from binance_f.impl.utils.timeservice import get_current_timestamp

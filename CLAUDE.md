@@ -1,0 +1,83 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Binance Futures quantitative trading framework with distributed architecture. Uses a C++ WebSocket aggregation server as the central data hub, with many distributed Python servers for data collection, risk control, and trading. The framework handles data ingestion, risk management, and trade execution — but does not include specific trading strategies.
+
+Production environment: Ubuntu 22.04, Python 3.14+
+
+Package management: uv (pyproject.toml + uv.lock)
+
+## Architecture
+
+```
+[Distributed Python Data Collectors] → [C++ WS Aggregation Server] → [Trading Servers]
+  (tick, kline, position, balance)        (wsServer.cpp)               (simpleTrade.py)
+                                                                            ↓
+                                                                    [Binance Futures API]
+```
+
+- **wsServer.cpp** — Central C++ WebSocket server that aggregates all data. Multiple data sources for the same data type are reconciled by comparing update timestamps. Compiled with: `g++ wsServer.cpp -o wsServer.out -lboost_system` (requires websocketpp + boost)
+- **commonFunction.py** — `FunctionClient` class providing MySQL (single + pool), WebSocket (A/B channels), Feishu messaging, Aliyun ECS discovery, Aliyun OSS, and Binance order routing
+- **config.py** — All connection configs: MySQL, Feishu API, WS addresses, Aliyun credentials, web server addresses
+- **binance_f/** — Modified Binance Futures Python SDK (forked from official)
+- **webServer.py** — Bottle-based HTTP server providing REST APIs for order management, position queries, trade recording, and machine status
+
+## Key Modules
+
+| Directory | Purpose |
+|-----------|---------|
+| `dataPy/` | Distributed data collectors (tick, kline) that feed into wsServer. Use Aliyun server naming conventions (e.g., `tickToWs_1`) for auto-discovery |
+| `keyPy/` | Critical operations: position monitoring (`getBinancePosition`, `positionRisk`, `wsPosition`), stop-loss (`makerStopLoss`), order timeout (`checkTimeoutOrders`), commission tracking |
+| `afterTrade/` | Post-trade data processing and OSS upload for frontend display |
+| `react-front/` | React frontend (webpack, antd, echarts, mobx). Reads data from Aliyun OSS |
+| `updateSymbol/` | SQL scripts and Python for managing the `trade_symbol` table in MySQL |
+| `tool/` | Speed test utilities for Binance API and tick data |
+
+## Build & Run Commands
+
+### C++ Aggregation Server
+```bash
+g++ wsServer.cpp -o wsServer.out -lboost_system
+nohup ./wsServer.out >/dev/null &
+```
+
+### Python Services
+```bash
+# Install dependencies
+uv sync
+
+# Run any Python service locally
+uv run python webServer.py
+
+# Each Python file runs as its own service on a separate server/IP
+# Remote deployment still uses shebang (#!/usr/bin/env python3):
+nohup ./webServer.py >/dev/null &
+```
+Preferred deployment: use `dataPy/uploadDataPy.py` to distribute and run across Aliyun servers, with automatic source file destruction after launch (security measure).
+
+### React Frontend
+```bash
+cd react-front
+npm install
+npm start          # dev server
+npm run build      # production build
+```
+
+## Design Principles
+
+- Each Python module = one server + one IP, tuned to max Binance API rate limits
+- Position/balance data is read via 3 independent methods (positionRisk, account API, WebSocket) and cross-validated by timestamp in wsServer
+- Kline data is split into two messages: latest 2 bars (real-time) and full history (periodic sync), to minimize parsing overhead on trading servers
+- Risk control in `commission.py`: per-symbol 4h loss > 150u or 24h loss > 1800u triggers trading ban; total 24h loss > 3000u halts all trading
+- Stop-loss orders in `makerStopLoss` trigger on >5% position change, split into 5 orders at staggered prices (5%, 5.5%, 6%, 6.5%, 7% from cost)
+
+## Important Notes
+
+- `simpleTrade.py` is a demo only (long when 1min gain >1%, close when 1min drop <-0.5%). Pay attention to `updateSymbolInfo()` for price/quantity precision handling
+- The `binance_f/` SDK is a modified fork — not the vanilla Binance SDK
+- Data collectors use Aliyun ECS naming conventions for auto-discovery (e.g., `tickToWs_1`, `tickToWs_2`). The `get_aliyun_private_ip_arr_by_name()` function in `commonFunction.py` handles this
+- WebSocket channels A and B in `FunctionClient` connect to the C++ aggregation server at addresses configured in `config.py`
+- `binance_spot/` directory is referenced in `binance_f/impl/tradeServer.py` but does not exist in the repo — this is a known gap from the original project

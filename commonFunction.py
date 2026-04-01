@@ -105,7 +105,7 @@ class FunctionClient(object):
             self.send_lark_msg(content)
 
     def turn_ts_to_time(self,initValue):
-        if str(type(initValue))=="<class 'str'>":
+        if isinstance(initValue, str):
             timeArray = time.strptime(initValue, "%Y-%m-%d %H:%M:%S")
             timestamp = time.mktime(timeArray)
             return timestamp
@@ -117,7 +117,7 @@ class FunctionClient(object):
             return dt
 
     def turn_ts_to_day_time(self,initValue):
-        if str(type(initValue))=="<class 'str'>":
+        if isinstance(initValue, str):
             timeArray = time.strptime(initValue, "%Y-%m-%d %H:%M:%S")
             timestamp = time.mktime(timeArray)
             return timestamp

@@ -29,7 +29,7 @@ class WebSocketWatchDog(threading.Thread):
     connection_list = list()
 
     def __init__(self, is_auto_connect=True, receive_limit_ms=60000, connection_delay_failure=15):
-        threading.Thread.__init__(self)
+        super().__init__()
         self.is_auto_connect = is_auto_connect
         self.receive_limit_ms = receive_limit_ms
         self.connection_delay_failure = connection_delay_failure

@@ -2,8 +2,7 @@ import base64
 import hashlib
 import hmac
 import datetime
-from urllib import parse
-import urllib.parse
+
 from binance_f.exception.binanceapiexception import BinanceApiException
 
 
@@ -24,4 +23,4 @@ def create_signature_with_query(secret_key, query):
 
 
 def utc_now():
-    return datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
