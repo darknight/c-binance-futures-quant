@@ -11,6 +11,12 @@ from app.models.order import Order
 from app.models.trade import Trade
 from app.models.trade_record import TradeRecord
 from app.models.position_record import PositionRecord
+from app.models.income import Income
+from app.models.income_day import IncomeDay
+from app.models.commission import Commission
+from app.models.machine_status import MachineStatus, TradeMachineStatus
+from app.models.trade_server_status import TradeServerStatus
+from app.models.loss_limit_time import LossLimitTime
 
 
 @pytest.fixture
@@ -150,3 +156,84 @@ def test_position_record_create(session):
     session.add(pr)
     session.commit()
     assert pr.id is not None
+
+
+def test_income_create(session):
+    i = Income(
+        access_token="abc123",
+        income_type="REALIZED_PNL",
+        income=Decimal("50.5"),
+        asset="USDT",
+        symbol="BTCUSDT",
+        binance_ts=1704067200000,
+    )
+    session.add(i)
+    session.commit()
+    assert i.id is not None
+
+
+def test_income_day_create(session):
+    d = IncomeDay(
+        api_key="key123",
+        day_begin_time="2026-01-01 00:00:00",
+        day_end_time="2026-01-02 00:00:00",
+        binance_commission=Decimal("10.0"),
+        pnl=Decimal("100.0"),
+    )
+    session.add(d)
+    session.commit()
+    assert d.id is not None
+
+
+def test_commission_create(session):
+    c = Commission(
+        machine_index=0,
+        income_type="COMMISSION",
+        income=Decimal("-0.5"),
+        symbol="ETHUSDT",
+        binance_ts=1704067200000,
+    )
+    session.add(c)
+    session.commit()
+    assert c.id is not None
+
+
+def test_machine_status_create(session):
+    ms = MachineStatus(
+        private_ip="10.0.0.1",
+        insert_ts=1704067200000,
+        update_ts=1704067200000,
+        symbol="BTCUSDT",
+    )
+    session.add(ms)
+    session.commit()
+    assert ms.id is not None
+
+    tms = TradeMachineStatus(
+        private_ip="10.0.0.2",
+        insert_ts=1704067200000,
+        update_ts=1704067200000,
+        status="running",
+        run_time=3600,
+    )
+    session.add(tms)
+    session.commit()
+    assert tms.id is not None
+
+
+def test_trade_server_status_create(session):
+    ts = TradeServerStatus(
+        private_ip="10.0.0.3",
+        name="trade_server_1",
+        symbol="BTCUSDT",
+    )
+    session.add(ts)
+    session.commit()
+    assert ts.id is not None
+
+
+def test_loss_limit_time_create(session):
+    llt = LossLimitTime(symbol="BTCUSDT", limit_time=3600)
+    session.add(llt)
+    session.commit()
+    assert llt.id is not None
