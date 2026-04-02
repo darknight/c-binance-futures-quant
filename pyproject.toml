@@ -19,3 +19,8 @@ dependencies = [
     "alembic>=1.18.4",
     "psycopg[binary]>=3.3.3",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
