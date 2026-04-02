@@ -1,5 +1,7 @@
 # Rust 重写 wsServer.cpp 方案
 
+> **Status: COMPLETED** (Phase 1 兼容模式已实现并合并，commit a140cf8)
+
 ## 背景
 
 `wsServer.cpp` 是整个量化交易框架的数据聚合中枢，258 行 C++ 代码，基于 websocketpp + Boost 实现。

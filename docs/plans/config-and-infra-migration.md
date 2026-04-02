@@ -1,5 +1,7 @@
 # 配置管理 + 基础设施迁移计划
 
+> **Status: COMPLETED** (Step 1-6 全部完成，commit 45d7cac)
+
 ## Context
 
 当前项目配置硬编码在 `config.py`，包含数据库密码、飞书密钥、阿里云凭证等敏感信息。项目深度依赖阿里云（ECS 自动发现 + OSS 对象存储）和飞书通知。用户要迁移到 DigitalOcean + Dokploy 部署，需要：
