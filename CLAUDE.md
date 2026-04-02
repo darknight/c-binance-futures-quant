@@ -13,13 +13,14 @@ Package management: uv (pyproject.toml + uv.lock)
 ## Architecture
 
 ```
-[Distributed Python Data Collectors] → [C++ WS Aggregation Server] → [Trading Servers]
-  (tick, kline, position, balance)        (wsServer.cpp)               (simpleTrade.py)
+[Distributed Python Data Collectors] → [WS Aggregation Server] → [Trading Servers]
+  (tick, kline, position, balance)       (ws-server / wsServer)     (simpleTrade.py)
                                                                             ↓
                                                                     [Binance Futures API]
 ```
 
-- **wsServer.cpp** — Central C++ WebSocket server that aggregates all data. Multiple data sources for the same data type are reconciled by comparing update timestamps. Compiled with: `g++ wsServer.cpp -o wsServer.out -lboost_system` (requires websocketpp + boost)
+- **ws-server/** — Rust rewrite of the WebSocket aggregation server (replaces wsServer.cpp). Uses tokio + tokio-tungstenite. HashMap-based storage (no fixed array limits), structured logging (tracing), optional token auth, graceful shutdown. Protocol-compatible with the C++ version — Python clients require zero changes.
+- **wsServer.cpp** — Legacy C++ WebSocket server (being replaced by ws-server/). Compiled with: `g++ wsServer.cpp -o wsServer.out -lboost_system` (requires websocketpp + boost)
 - **commonFunction.py** — `FunctionClient` class providing MySQL (single + pool), WebSocket (A/B channels), Feishu messaging, Aliyun ECS discovery, Aliyun OSS, and Binance order routing
 - **config.py** — All connection configs: MySQL, Feishu API, WS addresses, Aliyun credentials, web server addresses
 - **binance_f/** — Modified Binance Futures Python SDK (forked from official)
@@ -35,10 +36,30 @@ Package management: uv (pyproject.toml + uv.lock)
 | `react-front/` | React frontend (webpack, antd, echarts, mobx). Reads data from Aliyun OSS |
 | `updateSymbol/` | SQL scripts and Python for managing the `trade_symbol` table in MySQL |
 | `tool/` | Speed test utilities for Binance API and tick data |
+| `ws-server/` | Rust WebSocket aggregation server (tokio + tokio-tungstenite). Replaces wsServer.cpp |
 
 ## Build & Run Commands
 
-### C++ Aggregation Server
+### Rust Aggregation Server (ws-server/)
+```bash
+cd ws-server
+
+# Development
+cargo run -- --port 3698 --log-level debug
+
+# Run tests
+cargo test
+
+# Lint
+cargo clippy --all-targets
+cargo fmt -- --check
+
+# Production build
+cargo build --release
+nohup ./target/release/ws-server --port 3698 --log-level info >/dev/null &
+```
+
+### Legacy C++ Aggregation Server (deprecated)
 ```bash
 g++ wsServer.cpp -o wsServer.out -lboost_system
 nohup ./wsServer.out >/dev/null &
@@ -81,3 +102,9 @@ npm run build      # production build
 - Data collectors use Aliyun ECS naming conventions for auto-discovery (e.g., `tickToWs_1`, `tickToWs_2`). The `get_aliyun_private_ip_arr_by_name()` function in `commonFunction.py` handles this
 - WebSocket channels A and B in `FunctionClient` connect to the C++ aggregation server at addresses configured in `config.py`
 - `binance_spot/` directory is referenced in `binance_f/impl/tradeServer.py` but does not exist in the repo — this is a known gap from the original project
+
+## Rules
+
+- **Acceptance criteria**: Every code change must compile, pass all tests, and run correctly locally before considering it done
+- **CLAUDE.md sync**: After every code change, check if CLAUDE.md needs updating. If so, update and commit together
+- **Git commits**: Use the current git user directly. Do NOT add `Co-authored-by` or similar trailers. Follow [Conventional Commits](https://www.conventionalcommits.org/) format (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`)
