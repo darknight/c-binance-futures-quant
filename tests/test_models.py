@@ -5,8 +5,6 @@ import pytest
 # Import models before create_all so SQLModel.metadata is populated
 from app.models.trade_symbol import TradeSymbol
 from app.models.user import User
-from app.models.visitor import Visitor
-from app.models.chat import Chat
 from app.models.order import Order
 from app.models.trade import Trade
 from app.models.trade_record import TradeRecord
@@ -70,25 +68,6 @@ def test_user_create(session):
     session.refresh(user)
     assert user.id is not None
 
-
-def test_visitor_create(session):
-    v = Visitor(ip="1.2.3.4", time="2026-01-01 00:00:00", page="/home")
-    session.add(v)
-    session.commit()
-    assert v.id is not None
-
-
-def test_chat_create(session):
-    c = Chat(
-        access_token="abc123",
-        name="tester",
-        time="2026-01-01 00:00:00",
-        ts=1704067200,
-        content="hello",
-    )
-    session.add(c)
-    session.commit()
-    assert c.id is not None
 
 
 def test_order_create(session):
