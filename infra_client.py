@@ -1,4 +1,3 @@
-import mysql.connector
 import socket
 import json
 import requests
@@ -6,8 +5,8 @@ import time
 import oss2
 from websocket import create_connection
 from settings import settings
-from mysql.connector.pooling import MySQLConnectionPool
-from mysql.connector import connect
+from sqlmodel import create_engine
+from sqlalchemy import text
 from aliyunsdkcore.client import AcsClient
 from aliyunsdkcore.request import CommonRequest
 from aliyunsdkcore.acs_exception.exceptions import ClientException
@@ -25,22 +24,7 @@ class InfraClient(object):
         self._telegram_bot_token = settings.telegram_bot_token
         self._telegram_chat_id = settings.telegram_chat_id
 
-        self._mysql_config = {
-            "host": settings.database_host,
-            "port": settings.database_port,
-            "user": settings.database_user,
-            "password": settings.database_password,
-            "database": settings.database_name,
-            "charset": "utf8mb4",
-        }
-
-        self.mysqlConnect = {}
-        if "connectMysql" in params and params["connectMysql"]:
-            self.mysqlConnect = mysql.connector.connect(**self._mysql_config)
-
-        self.mysqlPoolConnect = {}
-        if "connectMysqlPool" in params and params["connectMysqlPool"]:
-            self.mysqlPoolConnect = MySQLConnectionPool(pool_name="mypool", pool_size=30, **self._mysql_config)
+        self._engine = create_engine(settings.database_url, echo=False)
 
         self.wsConnectionA = {}
 
@@ -125,94 +109,21 @@ class InfraClient(object):
         return timestamp
 
     def mysql_select(self, sql, params):
-        res = ()
-        normal = False
-        try:
-            self.mysqlConnect.ping()
-        except Exception as e:
-            self.mysqlConnect = mysql.connector.connect(**self._mysql_config)
-        while not normal:
-            try:
-                cursor = self.mysqlConnect.cursor()
-                cursor.execute(sql, params)
-                res = cursor.fetchall()
-                normal = True
-                cursor.close()
-            except Exception as e:
-                self.send_notify("mysql ex," + str(e) + "," + sql + "," + str(params))
-                print("mysql error")
-                print(sql)
-                print(e)
-                try:
-                    self.mysqlConnect.ping()
-                except Exception as e:
-                    self.mysqlConnect = mysql.connector.connect(**self._mysql_config)
-                time.sleep(3)
-        return res
+        with self._engine.connect() as conn:
+            result = conn.execute(text(sql), params if isinstance(params, dict) else {})
+            return result.fetchall()
 
     def mysql_commit(self, sql, params):
-        normal = False
-        try:
-            self.mysqlConnect.ping()
-        except Exception as e:
-            self.mysqlConnect = mysql.connector.connect(**self._mysql_config)
-        while not normal:
-            try:
-                cursor = self.mysqlConnect.cursor()
-                cursor.execute(sql, params)
-                self.mysqlConnect.commit()
-                normal = True
-                cursor.close()
-            except Exception as e:
-                self.send_notify("mysql ex," + str(e) + "," + sql + "," + str(params))
-                print("mysql error")
-                print(sql)
-                try:
-                    self.mysqlConnect.ping()
-                except Exception as e:
-                    self.mysqlConnect = mysql.connector.connect(**self._mysql_config)
-                time.sleep(3)
+        with self._engine.connect() as conn:
+            conn.execute(text(sql), params if isinstance(params, dict) else {})
+            conn.commit()
 
     def mysql_pool_select(self, q, params):
-        res = ()
-        con = self.mysqlPoolConnect.get_connection()
-        c = con.cursor()
-        try:
-            c.execute(q, params)
-            res = c.fetchall()
-            normal = True
-        except Exception as e:
-            print(e)
-            print(q)
-            print("doing error")
-            normal = False
-        try:
-            con.close()
-        except Exception as e:
-            print(q)
-            print(e)
-        return res
+        return self.mysql_select(q, params)
 
     def mysql_pool_commit(self, q, params):
-        con = self.mysqlPoolConnect.get_connection()
-        c = con.cursor()
-        try:
-            c.execute(q, params)
-            con.commit()
-            c.close()
-            normal = True
-        except Exception as e:
-            self.send_notify_limit_one_min(str(e))
-            print(q)
-            print(e)
-            normal = False
-        try:
-            con.close()
-        except Exception as e:
-            print(q)
-            print(e)
-
-        return normal
+        self.mysql_commit(q, params)
+        return True
 
     def get_private_ip(self):
         privateIP = ""
