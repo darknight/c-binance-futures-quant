@@ -3,11 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
-    database_host: str = "localhost"
-    database_port: int = 3306
-    database_user: str = ""
-    database_password: str = ""
-    database_name: str = ""
+    database_url: str = "postgresql://localhost:5432/quant"
 
     # Telegram
     telegram_bot_token: str = ""
