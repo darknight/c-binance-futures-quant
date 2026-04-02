@@ -4,4 +4,5 @@ __pycache__/
 *.egg-info/
 .idea/
 .claude/
+.env
 ws-server/target/

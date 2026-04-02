@@ -17,8 +17,8 @@ from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
 import numpy as np
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 from aliyunsdkcore.client import AcsClient
 from aliyunsdkcore.request import CommonRequest
 from aliyunsdkcore.acs_exception.exceptions import ClientException
@@ -27,7 +27,7 @@ from aliyunsdkecs.request.v20140526.DescribeInstancesRequest import DescribeInst
 ORDER_ID_SYMBOL = "t"
 
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="checkTimeoutOrders",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="checkTimeoutOrders",connectMysql =True)
 
 
 SERVER_NAME = FUNCTION_CLIENT.getServerName()
@@ -49,8 +49,8 @@ SERVER_IP_ARR = []
 nowPage =1
 emptyReq =False
 while  not emptyReq:
-    client =  AcsClient(ALIYUN_API_KEY, ALIYUN_API_SECRET,ALIYUN_POINT)
-    client.add_endpoint(ALIYUN_POINT,'Ecs',"ecs."+ALIYUN_POINT+".aliyuncs.com")
+    client =  AcsClient(settings.aliyun_api_key, settings.aliyun_api_secret,settings.aliyun_point)
+    client.add_endpoint(settings.aliyun_point,'Ecs',"ecs."+settings.aliyun_point+".aliyuncs.com")
     request = DescribeInstancesRequest()
     request.set_PageNumber(nowPage)
     request.set_PageSize(100)
@@ -138,7 +138,7 @@ def updateSymbolInfo():
 updateSymbolInfo()
 
 while not "BTCUSDT" in PRICE_DECIMAL_OBJ:
-    FUNCTION_CLIENT.send_lark_msg("mainConsole updateSymbolInfo")
+    FUNCTION_CLIENT.send_notify("mainConsole updateSymbolInfo")
     updateSymbolInfo()
     time.sleep(1)
 
@@ -157,7 +157,7 @@ def cancelOrder(symbol,clientOrderId):
             try:
                 result = REQUEST_CLIENT.cancel_order(symbol=symbol,orderId=clientOrderId)
             except Exception as e:
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min("【cancel order error】，"+symbol)
+                FUNCTION_CLIENT.send_notify_limit_one_min("【cancel order error】，"+symbol)
                 return False
     return True
 
@@ -178,11 +178,11 @@ def takeShortsOrderA(shortsPrice,shortsOnceTradeCoinQuantity,symbol):
         result = requestClient.post_order(newClientOrderId=newClientOrderId,reduceOnly=False,symbol=symbol, quantity=coinQuantity,side=OrderSide.SELL, ordertype=OrderType.LIMIT, price=shortsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTC)
         result = json.loads(result)
         if "code" in result and result['code']!=-5022  and result['code']!=-1001  and result['code']!=-2022:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("shorts order error:"+str(result)+","+str(coinQuantity),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("shorts order error:"+str(result)+","+str(coinQuantity),))
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("shortsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("shortsM:"+str(e),))
 
 
     return result
@@ -203,11 +203,11 @@ def takeLongsOrderA(longsPrice,longsOnceTradeCoinQuantity,symbol):
         result = requestClient.post_order(newClientOrderId=newClientOrderId,reduceOnly=False,symbol=symbol, quantity=coinQuantity,side=OrderSide.BUY, ordertype=OrderType.LIMIT, price=longsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTC)
         result = json.loads(result)
         if "code" in result and result['code']!=-5022 and result['code']!=-1001:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("longs order error:"+str(result)+","+str(coinQuantity),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("longs order error:"+str(result)+","+str(coinQuantity),))
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("longsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("longsM:"+str(e),))
 
     return result
 
@@ -226,11 +226,11 @@ def takeShortsOrderB(shortsPrice,shortsOnceTradeCoinQuantity,symbol):
         result = requestClient.post_order(newClientOrderId=newClientOrderId,reduceOnly=False,symbol=symbol, quantity=coinQuantity,side=OrderSide.SELL, ordertype=OrderType.LIMIT, price=shortsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTC)
         result = json.loads(result)
         if "code" in result and result['code']!=-5022  and result['code']!=-1001  and result['code']!=-2022:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("shorts order error:"+str(result)+","+str(coinQuantity),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("shorts order error:"+str(result)+","+str(coinQuantity),))
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("shortsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("shortsM:"+str(e),))
 
 
     return result
@@ -251,11 +251,11 @@ def takeLongsOrderB(longsPrice,longsOnceTradeCoinQuantity,symbol):
         result = requestClient.post_order(newClientOrderId=newClientOrderId,reduceOnly=False,symbol=symbol, quantity=coinQuantity,side=OrderSide.BUY, ordertype=OrderType.LIMIT, price=longsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTC)
         result = json.loads(result)
         if "code" in result and result['code']!=-5022 and result['code']!=-1001:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("longs order error:"+str(result)+","+str(coinQuantity),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("longs order error:"+str(result)+","+str(coinQuantity),))
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("longsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("longsM:"+str(e),))
 
     return result
 
@@ -332,7 +332,7 @@ def checkTimeoutOrders():
         openOrdersResult = result["r"]
         print(openOrdersResult)
         if "code" in result:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(result))
+            FUNCTION_CLIENT.send_notify_limit_one_min(str(result))
         else:
             openTakeObjA = {}
             openTakeObjB = {}
@@ -353,7 +353,7 @@ def checkTimeoutOrders():
                     orderTypeSymbol = clientOrderId.split("_")[0]
                     tradeTypeSymbol = clientOrderId.split("_")[1]
                 except Exception as e:
-                    FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(clientOrderId))
+                    FUNCTION_CLIENT.send_notify_limit_one_min(str(clientOrderId))
                     _thread.start_new_thread( FUNCTION_CLIENT.cancel_binance_order_by_web_server, (symbol,BINANCE_API_KEY_ARR[MACHINE_INDEX],BINANCE_API_SECRET_ARR[MACHINE_INDEX],clientOrderId, ) )
                 print(orderTypeSymbol)
 
@@ -362,10 +362,10 @@ def checkTimeoutOrders():
                 symbolPositionAmt = symbolPositionInfoArr[0]
                 if (orderTypeSymbol=="shortsStopLoss") and positionCost==0:
                     _thread.start_new_thread( FUNCTION_CLIENT.cancel_binance_order_by_web_server, (symbol,BINANCE_API_KEY_ARR[MACHINE_INDEX],BINANCE_API_SECRET_ARR[MACHINE_INDEX],clientOrderId, ) )
-                    FUNCTION_CLIENT.send_lark_msg_limit_one_min("cancel shortsStopLoss by position ==0")
+                    FUNCTION_CLIENT.send_notify_limit_one_min("cancel shortsStopLoss by position ==0")
                 if (orderTypeSymbol=="longsStopLoss") and positionCost==0:
                     _thread.start_new_thread( FUNCTION_CLIENT.cancel_binance_order_by_web_server, (symbol,BINANCE_API_KEY_ARR[MACHINE_INDEX],BINANCE_API_SECRET_ARR[MACHINE_INDEX],clientOrderId, ) )
-                    FUNCTION_CLIENT.send_lark_msg_limit_one_min("cancel longsStopLoss by position ==0")
+                    FUNCTION_CLIENT.send_notify_limit_one_min("cancel longsStopLoss by position ==0")
                 if (orderTypeSymbol=="wTake") and now -orderOpenTime>1*15*1000:
                     _thread.start_new_thread( FUNCTION_CLIENT.cancel_binance_order_by_web_server, (symbol,BINANCE_API_KEY_ARR[MACHINE_INDEX],BINANCE_API_SECRET_ARR[MACHINE_INDEX],clientOrderId, ) )
 
@@ -441,7 +441,7 @@ while 1:
         checkTimeoutOrders()
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
         time.sleep(3)
         print(e)
         print(ex)

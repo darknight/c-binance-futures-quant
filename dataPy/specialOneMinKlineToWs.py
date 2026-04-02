@@ -5,11 +5,11 @@ import requests
 import traceback
 import json
 import _thread
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="oneMinKlineToWs",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="oneMinKlineToWs",connectMysql =True)
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
 
@@ -46,18 +46,18 @@ def klineToWs(tradeSymbolObj):
     url = "https://fapi.binance.com/fapi/v1/klines?symbol="+tradeSymbolObj["symbol"]+"&interval=1m&limit=45"
     klineData = json.loads(REQUESTS_SESSION.get(url,timeout=(1,1)).content.decode())
     if 'code' in klineData:
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(klineData))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(klineData))
     else:
         try:
             url = "https://fapi.binance.com/fapi/v1/depth?symbol="+tradeSymbolObj["symbol"]+"&limit=5"
             depthData = json.loads(REQUESTS_SESSION.get(url,timeout=(1,1)).content.decode())
         except Exception as e:
             ex = traceback.format_exc()
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+            FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
         bidsPrice = 0
         asksPrice = 0
         if 'code' in depthData:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(depthData))
+            FUNCTION_CLIENT.send_notify_limit_one_min(str(depthData))
         else:
             bidsPrice = float(depthData["bids"][0][0])
             asksPrice = float(depthData["asks"][0][0])
@@ -173,7 +173,7 @@ getVolConditionFromMyServerB()
 
 UPDATE_VOL_TS = 0
 
-FUNCTION_CLIENT.send_lark_msg_limit_one_min("start")
+FUNCTION_CLIENT.send_notify_limit_one_min("start")
 
 while 1:
     try:
@@ -186,7 +186,7 @@ while 1:
         dataStr = FUNCTION_CLIENT.get_from_ws_a("G")
         symbolIndex = int(dataStr)
         if now - CONDITION_AND_RATE_ARR_A[symbolIndex][4]>180000 and now - CONDITION_AND_RATE_ARR_B[symbolIndex][4]>180000:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min("CONDITION_AND_RATE_ARR DELAY")
+            FUNCTION_CLIENT.send_notify_limit_one_min("CONDITION_AND_RATE_ARR DELAY")
         else:
             volConditionA = CONDITION_AND_RATE_ARR_A[symbolIndex][0]
 
@@ -209,13 +209,13 @@ while 1:
                 klineToWs(TRADE_SYMBOL_ARR[symbolIndex])
 
     except Exception as e:
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(e))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(e))
         print(e)
         time.sleep(0.5)
         try:
             klineToWs(TRADE_SYMBOL_ARR[i])
         except Exception as e:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(e))
+            FUNCTION_CLIENT.send_notify_limit_one_min(str(e))
             print(e)
             time.sleep(1)
 

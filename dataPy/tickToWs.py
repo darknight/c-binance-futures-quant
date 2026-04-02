@@ -3,12 +3,12 @@
 import time
 import json
 import requests
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
 #2023.07.26 发现币安出现一个bug，导致tickbook有时候返还的排序会不一定，导致了之前设计的一部分问题，目前已经解决
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="tickToWs",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="tickToWs",connectMysql =True)
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
 
@@ -55,7 +55,7 @@ def tickToWs():
     beginTs = int(time.time()*1000)
     tickerData.sort(key=takeElemZero,reverse=False)
     if 'code' in tickerData:
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(tickerData))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(tickerData))
     else:
         sendPriceStr = ""
         sendTs= tickerData[0]["time"]
@@ -84,7 +84,7 @@ def tickToWs():
         endTs = int(time.time()*1000)
 
         if sendPriceStr=="":
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min("sendPriceStr==null:"+str(tickerData))
+            FUNCTION_CLIENT.send_notify_limit_one_min("sendPriceStr==null:"+str(tickerData))
         else:
             tickSendStr = "sjaoihsoaitowljd"+str(sendTs)+sendPriceStr
             FUNCTION_CLIENT.send_to_ws_a(tickSendStr)
@@ -115,7 +115,7 @@ for i in range(len(TICK_PRIVATE_IP_ARR)):
 
 nowMillisecondLimitArr = nowMillisecondLimitAllArr[nowMillisecondLimitArrIndex]
 
-FUNCTION_CLIENT.send_lark_msg_limit_one_min("start")
+FUNCTION_CLIENT.send_notify_limit_one_min("start")
 
 errorTime = 0
 
@@ -141,4 +141,4 @@ while 1:
 
         errorTime = errorTime+1
         if errorTime>5:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(e))
+            FUNCTION_CLIENT.send_notify_limit_one_min(str(e))

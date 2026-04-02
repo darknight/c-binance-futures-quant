@@ -8,10 +8,10 @@ import requests
 import json
 import traceback
 from datetime import datetime
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="positionReord")
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="positionReord")
 
 POSITION_TABLE_NAME = "position_record"
 
@@ -44,7 +44,7 @@ PRIMARY KEY (`id`) USING BTREE
 """
     FUNCTION_CLIENT.mysql_commit(sql,[])
 
-PUBLIC_SERVER_IP = "http://"+WEB_ADDRESS+":8888/"
+PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 
 TRADE_SYMBOL_ARR =  []
 
@@ -139,7 +139,7 @@ def getBinancePositionFromMyServer():
             POSITION_ARR = []
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
 
 
 def getPositionInfoArrBySymbol(symbol):
@@ -244,7 +244,7 @@ while 1:
         ERROR_TIME = 0
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
         time.sleep(1)
         print(ex)
     time.sleep(3)

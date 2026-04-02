@@ -21,8 +21,8 @@ Package management: uv (pyproject.toml + uv.lock)
 
 - **ws-server/** — Rust rewrite of the WebSocket aggregation server (replaces wsServer.cpp). Uses tokio + tokio-tungstenite. HashMap-based storage (no fixed array limits), structured logging (tracing), optional token auth, graceful shutdown. Protocol-compatible with the C++ version — Python clients require zero changes.
 - **wsServer.cpp** — Legacy C++ WebSocket server (being replaced by ws-server/). Compiled with: `g++ wsServer.cpp -o wsServer.out -lboost_system` (requires websocketpp + boost)
-- **commonFunction.py** — `FunctionClient` class providing MySQL (single + pool), WebSocket (A/B channels), Feishu messaging, Aliyun ECS discovery, Aliyun OSS, and Binance order routing
-- **config.py** — All connection configs: MySQL, Feishu API, WS addresses, Aliyun credentials, web server addresses
+- **infra_client.py** — `InfraClient` class providing MySQL (single + pool), WebSocket (A/B channels), Telegram notifications, Aliyun ECS discovery, Aliyun OSS, and Binance order routing
+- **settings.py** — pydantic-settings based configuration, reads from `.env` file. Template: `.env.example`
 - **binance_f/** — Modified Binance Futures Python SDK (forked from official)
 - **webServer.py** — Bottle-based HTTP server providing REST APIs for order management, position queries, trade recording, and machine status
 
@@ -99,8 +99,9 @@ npm run build      # production build
 
 - `simpleTrade.py` is a demo only (long when 1min gain >1%, close when 1min drop <-0.5%). Pay attention to `updateSymbolInfo()` for price/quantity precision handling
 - The `binance_f/` SDK is a modified fork — not the vanilla Binance SDK
-- Data collectors use Aliyun ECS naming conventions for auto-discovery (e.g., `tickToWs_1`, `tickToWs_2`). The `get_aliyun_private_ip_arr_by_name()` function in `commonFunction.py` handles this
-- WebSocket channels A and B in `FunctionClient` connect to the C++ aggregation server at addresses configured in `config.py`
+- Data collectors use Aliyun ECS naming conventions for auto-discovery (e.g., `tickToWs_1`, `tickToWs_2`). The `get_aliyun_private_ip_arr_by_name()` function in `infra_client.py` handles this
+- WebSocket channels A and B in `InfraClient` connect to the aggregation server at addresses configured in `.env` (`WS_ADDRESS_A`, `WS_ADDRESS_B`)
+- Configuration is managed via `.env` file (not committed to git). See `.env.example` for template
 - `binance_spot/` directory is referenced in `binance_f/impl/tradeServer.py` but does not exist in the repo — this is a known gap from the original project
 
 ## Rules

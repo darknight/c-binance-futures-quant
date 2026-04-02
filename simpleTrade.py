@@ -17,13 +17,13 @@ from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
 import numpy as np
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="secondOpen")
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="secondOpen")
 
-PUBLIC_SERVER_IP = "http://"+WEB_ADDRESS+":8888/"
+PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 
 PRIVATE_IP = FUNCTION_CLIENT.get_private_ip()
 
@@ -103,7 +103,7 @@ def getTickData():
 
 
     if now - LAST_DATA_UPDATE_TS>30000:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("dataStr aways equal LAST_DATA_STR",))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("dataStr aways equal LAST_DATA_STR",))
     if dataStr!=LAST_DATA_STR:
         UPDATE_DATA_STR = True
         LAST_DATA_UPDATE_TS = now
@@ -113,7 +113,7 @@ def getTickData():
 
         ACCOUNT_BALANCE_VALUE = float(dataArr[4])
         if ACCOUNT_BALANCE_VALUE==0:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("ACCOUNT_BALANCE_VALUE==0",))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("ACCOUNT_BALANCE_VALUE==0",))
         if dataArr[3]!="":
             BAN_SYMBOL_ARR = dataArr[3].split("@")
         else:
@@ -154,7 +154,7 @@ def getTickData():
                         del ONE_MIN_KLINE_OBJ_ARR[a]["klineArr"][0]
                         ONE_MIN_KLINE_OBJ_ARR[a]["dataError"] = False
                     elif  (klineMin < localMin-2) and (localMin!=1 and localMin!=0):
-                        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("localMin B:"+str(localMin)+",klineMin:"+str(klineMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"])+","+str(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]),))
+                        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("localMin B:"+str(localMin)+",klineMin:"+str(klineMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"])+","+str(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]),))
                         ONE_MIN_KLINE_OBJ_ARR[a]["dataError"] = True
 
 
@@ -213,7 +213,7 @@ def getTickData():
                     LOCAL_ONE_MIN_KLINE_OBJ_ARR[a].append([openPrice,closePrice,priceArr[a][0],priceArr[a][1],serverMin])
                 else:
                     if localMin-1 != serverMin and  (localMin!=1 and localMin!=0):
-                        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("localMin:"+str(localMin)+",serverMin:"+str(serverMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"]),))
+                        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("localMin:"+str(localMin)+",serverMin:"+str(serverMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"]),))
                         LOCAL_ONE_MIN_KLINE_OBJ_ARR = []
 
                 if len(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]) > 3:
@@ -238,7 +238,7 @@ def getTickData():
                         del ONE_MIN_KLINE_OBJ_ARR[a]["klineArr"][0]
                         ONE_MIN_KLINE_OBJ_ARR[a]["dataError"] = False
                     elif localMin < klineMin-2 and  (klineMin!=1 and klineMin!=0):
-                        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("localMin A:"+str(localMin)+",klineMin:"+str(klineMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"])+","+str(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]),))
+                        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("localMin A:"+str(localMin)+",klineMin:"+str(klineMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"])+","+str(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]),))
                         ONE_MIN_KLINE_OBJ_ARR[a]["dataError"] = True
 
 
@@ -332,7 +332,7 @@ def updateSymbolInfo():
 
 updateSymbolInfo()
 while not "BTCUSDT" in PRICE_DECIMAL_OBJ:
-    FUNCTION_CLIENT.send_lark_msg_limit_one_min("mainConsole updateSymbolInfo")
+    FUNCTION_CLIENT.send_notify_limit_one_min("mainConsole updateSymbolInfo")
     updateSymbolInfo()
     time.sleep(1)
 
@@ -382,11 +382,11 @@ def makerShortsOrder(shortsPrice,shortsOnceTradeCoinQuantity,symbol):
         result = REQUEST_CLIENT.post_order(newClientOrderId=newClientOrderId,reduceOnly=False,symbol=symbol, quantity=coinQuantity,side=OrderSide.SELL, ordertype=OrderType.LIMIT, price=shortsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTX)
         result = json.loads(result)
         if "code" in result and result['code']!=-5022  and result['code']!=-1001  and result['code']!=-2022:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("shorts order error:"+str(result)+","+str(coinQuantity),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("shorts order error:"+str(result)+","+str(coinQuantity),))
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("shortsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("shortsM:"+str(e),))
 
 
     return result
@@ -405,11 +405,11 @@ def makerCloseLongsOrder(shortsPrice,shortsOnceTradeCoinQuantity,symbol):
         result = REQUEST_CLIENT.post_order(newClientOrderId=newClientOrderId,reduceOnly=True,symbol=symbol, quantity=coinQuantity,side=OrderSide.SELL, ordertype=OrderType.LIMIT, price=shortsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTX)
         result = json.loads(result)
         if "code" in result and result['code']!=-5022  and result['code']!=-1001 and result['code']!=-2022:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("close longs order error:"+str(result)+","+str(coinQuantity)+","+str(symbol),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("close longs order error:"+str(result)+","+str(coinQuantity)+","+str(symbol),))
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("shortsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("shortsM:"+str(e),))
 
 
     return result
@@ -429,11 +429,11 @@ def makerLongsOrder(longsPrice,longsOnceTradeCoinQuantity,symbol):
         result = REQUEST_CLIENT.post_order(newClientOrderId=newClientOrderId,reduceOnly=False,symbol=symbol, quantity=coinQuantity,side=OrderSide.BUY, ordertype=OrderType.LIMIT, price=longsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTX)
         result = json.loads(result)
         if "code" in result and result['code']!=-5022 and result['code']!=-1001:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("longs order error:"+str(result)+","+str(coinQuantity),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("longs order error:"+str(result)+","+str(coinQuantity),))
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("longsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("longsM:"+str(e),))
 
     return result
 
@@ -451,12 +451,12 @@ def makerCloseShortsOrder(longsPrice,longsOnceTradeCoinQuantity,symbol):
         result = REQUEST_CLIENT.post_order(newClientOrderId=newClientOrderId,reduceOnly=True,symbol=symbol, quantity=coinQuantity,side=OrderSide.BUY, ordertype=OrderType.LIMIT, price=longsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTX)
         result = json.loads(result)
         if "code" in result and result['code']!=-5022 and result['code']!=-1001 and result['code']!=-2022:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("close shorts order error:"+str(result)+","+str(coinQuantity)+","+str(symbol),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("close shorts order error:"+str(result)+","+str(coinQuantity)+","+str(symbol),))
 
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("longsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("longsM:"+str(e),))
 
     return result
 
@@ -476,7 +476,7 @@ def forceCloseShorts(symbol):
         result = REQUEST_CLIENT.post_market_order(newClientOrderId=newClientOrderId,reduceOnly=True,symbol=symbol, quantity=marketMaxSize,side= OrderSide.BUY, ordertype=OrderType.MARKET, price="0", positionSide="BOTH", timeInForce=TimeInForce.GTC)
         result = json.loads(result)
         if 'code' in result:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min("force code:"+str(result))
+            FUNCTION_CLIENT.send_notify_limit_one_min("force code:"+str(result))
         print(result)
     except Exception as e:
         print(e)
@@ -501,7 +501,7 @@ def forceCloseLongs(symbol):
         result = REQUEST_CLIENT.post_market_order(newClientOrderId=newClientOrderId,reduceOnly=True,symbol=symbol, quantity=marketMaxSize,side= OrderSide.SELL, ordertype=OrderType.MARKET, price="0", positionSide="BOTH", timeInForce=TimeInForce.GTC)
         result = json.loads(result)
         if 'code' in result:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(" force code:"+str(result))
+            FUNCTION_CLIENT.send_notify_limit_one_min(" force code:"+str(result))
         print(result)
     except Exception as e:
         print(e)
@@ -581,7 +581,7 @@ def newOpenOrders():
                 errorTime = errorTime+1
                 getTickData()
                 if errorTime>3:
-                    _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg,(" errorTime>3 A:"+symbol,))
+                    _thread.start_new_thread(FUNCTION_CLIENT.send_notify,(" errorTime>3 A:"+symbol,))
                     time.sleep(errorTime*0.1)
         #一分钟上涨超过0.5%，并且该币种没有仓位则平多
         if oneMinRate>0.5 and positionValue!=0:
@@ -592,7 +592,7 @@ def newOpenOrders():
                 errorTime = errorTime+1
                 getTickData()
                 if errorTime>3:
-                    _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg,(" errorTime>3 A:"+symbol,))
+                    _thread.start_new_thread(FUNCTION_CLIENT.send_notify,(" errorTime>3 A:"+symbol,))
                     time.sleep(errorTime*0.1)
 
     #当前持仓总利润低于-100则强制平仓
@@ -603,7 +603,7 @@ def newOpenOrders():
                 _thread.start_new_thread( forceCloseShorts, (POSITION_ARR[i][0],) )
             if POSITION_ARR[i][2]>0:
                 _thread.start_new_thread( forceCloseLongs, (POSITION_ARR[i][0],) )
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min("allProfit<=-100:"+str(allProfit))
+        FUNCTION_CLIENT.send_notify_limit_one_min("allProfit<=-100:"+str(allProfit))
 
 getOneMinData()
 getTickData()
@@ -625,7 +625,7 @@ while 1:
         RUN_TIME = RUN_TIME+1
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
         print(e)
         print(ex)
         time.sleep(1)

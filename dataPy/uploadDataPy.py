@@ -8,10 +8,10 @@ import sys
 import paramiko
 import json
 import time
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="uploadDataPy")
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="uploadDataPy")
 
 TICK_PRIVATE_IP_ARR = FUNCTION_CLIENT.get_aliyun_private_ip_arr_by_name("tickToWs")
 

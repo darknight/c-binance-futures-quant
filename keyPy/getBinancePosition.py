@@ -15,10 +15,10 @@ from binance_f.requestclient import RequestClient
 from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="getBinancePosition",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="getBinancePosition",connectMysql =True)
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
 
@@ -94,7 +94,7 @@ def getBinancePosition():
     result = REQUEST_CLIENT.get_account_information()
     result = json.loads(result)
     if "code" in result:
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min("getBinancePosition code:"+str(result))
+        FUNCTION_CLIENT.send_notify_limit_one_min("getBinancePosition code:"+str(result))
     else:
         positionsArr = result["positions"]
         assetsArr = result["assets"]
@@ -157,5 +157,5 @@ while 1:
         time.sleep(0.1)
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
         time.sleep(1)

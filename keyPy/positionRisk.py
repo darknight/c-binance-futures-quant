@@ -13,10 +13,10 @@ from binance_f.requestclient import RequestClient
 from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="positionRisk",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="positionRisk",connectMysql =True)
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
 
@@ -137,7 +137,7 @@ def updateSymbolInfo():
 updateSymbolInfo()
 
 while not "BTCUSDT" in PRICE_DECIMAL_OBJ:
-    FUNCTION_CLIENT.send_lark_msg_limit_one_min("mainConsole updateSymbolInfo")
+    FUNCTION_CLIENT.send_notify_limit_one_min("mainConsole updateSymbolInfo")
     updateSymbolInfo()
     time.sleep(1)
 
@@ -152,7 +152,7 @@ def forceCloseShorts(symbol):
         result = REQUEST_CLIENT.post_market_order(newClientOrderId=newClientOrderId,reduceOnly=True,symbol=symbol, quantity=marketMaxSize,side= OrderSide.BUY, ordertype=OrderType.MARKET, price="0", positionSide="BOTH", timeInForce=TimeInForce.GTC)
         result = json.loads(result)
         if 'code' in result:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min("force code:"+str(result))
+            FUNCTION_CLIENT.send_notify_limit_one_min("force code:"+str(result))
         print(result)
     except Exception as e:
         print(e)
@@ -177,7 +177,7 @@ def forceCloseLongs(symbol):
         result = REQUEST_CLIENT.post_market_order(newClientOrderId=newClientOrderId,reduceOnly=True,symbol=symbol, quantity=marketMaxSize,side= OrderSide.SELL, ordertype=OrderType.MARKET, price="0", positionSide="BOTH", timeInForce=TimeInForce.GTC)
         result = json.loads(result)
         if 'code' in result:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(" force code:"+str(result))
+            FUNCTION_CLIENT.send_notify_limit_one_min(" force code:"+str(result))
         print(result)
     except Exception as e:
         print(e)
@@ -200,7 +200,7 @@ def getBinancePosition():
     result = REQUEST_CLIENT.get_position()
     result = json.loads(result)
     if "code" in result:
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min("getBinancePosition ex:"+str(result))
+        FUNCTION_CLIENT.send_notify_limit_one_min("getBinancePosition ex:"+str(result))
     else:
         INFO_ARR["positionArr"] = []
         for i in range(len(result)):
@@ -217,11 +217,11 @@ def getBinancePosition():
                 if positionAmt<0:
                     if binancePrice>entryPrice*(1+stopLossRate/100):
                         forceCloseShorts(symbol)
-                        FUNCTION_CLIENT.send_lark_msg_limit_one_min("forceCloseShorts")
+                        FUNCTION_CLIENT.send_notify_limit_one_min("forceCloseShorts")
                 if positionAmt>0:
                     if binancePrice<entryPrice*(1-stopLossRate/100):
                         forceCloseLongs(symbol)
-                        FUNCTION_CLIENT.send_lark_msg_limit_one_min("forceCloseLongs")
+                        FUNCTION_CLIENT.send_notify_limit_one_min("forceCloseLongs")
             INFO_ARR["positionArr"].append(result[i])
 
         positionsArr =result
@@ -246,5 +246,5 @@ while 1:
         time.sleep(0.1)
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
         time.sleep(1)

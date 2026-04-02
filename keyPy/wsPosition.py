@@ -17,10 +17,10 @@ from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
 import numpy as np
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="wsPosition",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="wsPosition",connectMysql =True)
 
 SERVER_NAME = FUNCTION_CLIENT.getServerName()
 
@@ -54,7 +54,7 @@ def getBinancePosition():
         result = REQUEST_CLIENT.get_account_information()
         result = json.loads(result)
         if "code" in result:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min("getBinancePosition code:"+str(result))
+            FUNCTION_CLIENT.send_notify_limit_one_min("getBinancePosition code:"+str(result))
         else:
             positionsArr = result["positions"]
             if len(POSITION_ARR)!=positionsArr:
@@ -174,7 +174,7 @@ def on_message(ws, message):
                 FUNCTION_CLIENT.send_to_ws_b(sendStr)
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
 def on_error(ws, error):
     print(error)
 

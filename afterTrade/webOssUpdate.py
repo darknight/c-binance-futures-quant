@@ -6,12 +6,12 @@ import json
 import random
 import traceback
 import _thread
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-PUBLIC_SERVER_IP = "http://"+WEB_ADDRESS+":8888/"
+PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="dataToOss",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="dataToOss",connectMysql =True)
 
 DAY_INCOME_TABLE_NAME = "income_history_take_day"
 
@@ -162,7 +162,7 @@ def getProfit():
         PROFIT_UPDATE_TS = todayTs
         # except Exception as e:
         #     print(e)
-        #     FUNCTION_CLIENT.send_lark_msg_limit_one_min("getProfit ex:"+str(e))
+        #     FUNCTION_CLIENT.send_notify_limit_one_min("getProfit ex:"+str(e))
 
 
 POSITION_ARR = []
@@ -187,7 +187,7 @@ def getBinancePositionFromMyServer():
             POSITION_ARR = []
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
 
 
 def getPositionInfoArrBySymbol(symbol):
@@ -537,5 +537,5 @@ while 1:
         updateDayIncome()
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
         time.sleep(1)

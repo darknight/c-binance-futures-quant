@@ -13,11 +13,11 @@ from binance_f.requestclient import RequestClient
 from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="commission",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="commission",connectMysql =True)
 
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
@@ -96,7 +96,7 @@ def getBNBPrice():
             tryTime = tryTime+1
             time.sleep(1)
             if tryTime>3:
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min("读取bnb价格出错")
+                FUNCTION_CLIENT.send_notify_limit_one_min("读取bnb价格出错")
             print(e)
     return nowPrice
 
@@ -177,7 +177,7 @@ def record_commission():
         result = json.loads(result)
 
         if "code" in result:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(result))
+            FUNCTION_CLIENT.send_notify_limit_one_min(str(result))
         else:
             for i in range(len(result)):
                 trade_id = str(result[i]['tradeId'])
@@ -230,7 +230,7 @@ while 1:
         record_commission()
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
         time.sleep(1)
         print(e)
     time.sleep(1)

@@ -13,10 +13,10 @@ from binance_f.requestclient import RequestClient
 from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="makerStopLoss")
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="makerStopLoss")
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
 
@@ -91,7 +91,7 @@ def updateSymbolInfo():
 
 updateSymbolInfo()
 while not "BTCUSDT" in PRICE_DECIMAL_OBJ:
-    FUNCTION_CLIENT.send_lark_msg_limit_one_min("mainConsole updateSymbolInfo")
+    FUNCTION_CLIENT.send_notify_limit_one_min("mainConsole updateSymbolInfo")
     updateSymbolInfo()
     time.sleep(1)
 
@@ -109,7 +109,7 @@ def cancelOrder(symbol,clientOrderId):
             try:
                 result = REQUEST_CLIENT.cancel_order(symbol=symbol,orderId=clientOrderId)
             except Exception as e:
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min("【cancel order error】，"+symbol)
+                FUNCTION_CLIENT.send_notify_limit_one_min("【cancel order error】，"+symbol)
                 return False
     return True
 
@@ -175,7 +175,7 @@ def cancelBinanceOrder(symbol):
                 result = json.loads(result)
                 print(e)
             except Exception as e:
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min("cancelBinanceOrder:"+str(e))
+                FUNCTION_CLIENT.send_notify_limit_one_min("cancelBinanceOrder:"+str(e))
 
 
 def shortsStopLossByPrice(symbol,stopLossPrice,quantity):
@@ -197,11 +197,11 @@ def shortsStopLossByPrice(symbol,stopLossPrice,quantity):
             result = json.loads(result)
             if "code" in result and str(result["code"])=="4183":
                 forceCloseShorts(symbol)
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min("code:4183")
+                FUNCTION_CLIENT.send_notify_limit_one_min("code:4183")
         print(result)
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
 
     return stopLossResult
 
@@ -224,11 +224,11 @@ def longsStopLossByPrice(symbol,stopLossPrice,quantity):
             result = json.loads(result)
             if "code" in result and str(result["code"])=="4183":
                 forceCloseLongs(symbol)
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min("code:4183")
+                FUNCTION_CLIENT.send_notify_limit_one_min("code:4183")
             print(result)
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
     return stopLossResult
 
 POSITION_ARR = []
@@ -275,7 +275,7 @@ def checkAllStopLoss():
                 openOrdersResult = REQUEST_CLIENT.get_open_orders(symbol=symbol)
                 openOrdersResult = json.loads(openOrdersResult)
                 if "code" in openOrdersResult:
-                    FUNCTION_CLIENT.send_lark_msg_limit_one_min("checkAllStopLoss ex:"+str(openOrdersResult))
+                    FUNCTION_CLIENT.send_notify_limit_one_min("checkAllStopLoss ex:"+str(openOrdersResult))
                 else:
                     symbolPositionAmt = float(POSITION_ARR[positionIndex][2])
                     symbolCost = float(POSITION_ARR[positionIndex][1])
@@ -304,7 +304,7 @@ def checkAllStopLoss():
                                 for i in range(len(stopLossOrderIDArr)):
                                     cancelOrder(symbol,stopLossOrderIDArr[i])
                                 if len(stopLossOrderIDArr)!=0:
-                                    FUNCTION_CLIENT.send_lark_msg_limit_one_min("re stop:"+str(abs(allStopLossQuantity))+","+str(abs(symbolPositionAmt)))
+                                    FUNCTION_CLIENT.send_notify_limit_one_min("re stop:"+str(abs(allStopLossQuantity))+","+str(abs(symbolPositionAmt)))
                     elif symbolPositionAmt>0:
                         stopLossPrice = float(decimal.Decimal(PRICE_DECIMAL_OBJ[symbol] % (symbolCost*0.9)))
                         stopAmount = abs(symbolPositionAmt)
@@ -329,12 +329,12 @@ def checkAllStopLoss():
                                 for i in range(len(stopLossOrderIDArr)):
                                     cancelOrder(symbol,stopLossOrderIDArr[i])
                                 if len(stopLossOrderIDArr)!=0:
-                                    FUNCTION_CLIENT.send_lark_msg_limit_one_min("re stop:"+str(abs(allStopLossQuantity))+","+str(abs(symbolPositionAmt)))
+                                    FUNCTION_CLIENT.send_notify_limit_one_min("re stop:"+str(abs(allStopLossQuantity))+","+str(abs(symbolPositionAmt)))
 
                 errorTime = 10
             except Exception as e:
                 ex = traceback.format_exc()
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+                FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
 
 
 
@@ -356,4 +356,4 @@ while 1:
             checkAllStopLoss()
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))

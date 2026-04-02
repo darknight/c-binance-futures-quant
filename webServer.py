@@ -29,10 +29,10 @@ from aliyunsdkcore.acs_exception.exceptions import ServerException
 from aliyunsdkecs.request.v20140526.DescribeInstancesRequest import DescribeInstancesRequest
 from aliyunsdkecs.request.v20140526.StartInstancesRequest import StartInstancesRequest
 from aliyunsdkecs.request.v20140526.StopInstancesRequest import StopInstancesRequest
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="webServer",connectMysqlPool=True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="webServer",connectMysqlPool=True)
 
 tableName = "trade_machine_status"
 
@@ -163,7 +163,7 @@ def updateSymbolInfo():
 updateSymbolInfo()
 
 while not "BTCUSDT" in PRICE_DECIMAL_OBJ:
-    FUNCTION_CLIENT.send_lark_msg("mainConsole updateSymbolInfo")
+    FUNCTION_CLIENT.send_notify("mainConsole updateSymbolInfo")
     updateSymbolInfo()
     time.sleep(1)
 
@@ -2971,7 +2971,7 @@ def cancel_binance_order():
                 request_client = RequestClient(api_key=key,secret_key=secret)
                 result = request_client.cancel_order(symbol=symbol,orderId=clientOrderId)
             except Exception as e:
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min("【cancel order error】，"+key+","+symbol+","+clientOrderId+","+str(e))
+                FUNCTION_CLIENT.send_notify_limit_one_min("【cancel order error】，"+key+","+symbol+","+clientOrderId+","+str(e))
 
 
     resp = json.dumps({'s':'ok'})
@@ -3032,13 +3032,13 @@ def begin_trade_record():
                 sql = "INSERT INTO trades_take (  `status`, `version`,`volMultiple`,`standardRate`,`symbol`,`klineArr`,  `nowOpenRate`,`beginMachineNumber`,`direction`,`longsConditionA`,  `shortsConditionA`,`shortsConditionB`,`btcNowOpenRate`,`ethNowOpenRate`,`beginTs`,  `endTs`,`tradeType`,`updateTs`,`clientBeginPrice`,`clientEndPrice`)  VALUES ( %s,%s, %s, %s,%s,  %s,%s, %s, %s,%s,  %s,%s, %s, %s,%s,  %s,%s, %s, %s, %s);" 
                 FUNCTION_CLIENT.mysql_pool_commit(sql,['tradeBegin', 3,volMultiple,standardRate,symbol,klineArr,  nowOpenRate,machineNumber,direction,longsConditionA,  shortsConditionA,shortsConditionB,btcNowOpenRate,ethNowOpenRate,ts,  ts,myTradeType,ts,clientBeginPrice,clientEndPrice])
         else:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(myTradeType)
+            FUNCTION_CLIENT.send_notify_limit_one_min(myTradeType)
         #     if len(tradesData)==0:
         #         time.sleep(3)
         #         sql = "select `id` from trades where symbol=%s and status='tradeBegin'"
         #         tradesData = FUNCTION_CLIENT.mysql_pool_select(sql,[symbol])
         #     if myTradeType.find("close")<0 and len(tradesData)==0:
-        #         FUNCTION_CLIENT.send_lark_msg_limit_one_min(symbol+","+myTradeType)
+        #         FUNCTION_CLIENT.send_notify_limit_one_min(symbol+","+myTradeType)
         #     elif len(tradesData)>0:
         #         tradesID = tradesData[0][0]
         #         updateSql = ""
@@ -3064,7 +3064,7 @@ def begin_trade_record():
         return resp
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
 
 @post('/get_order_result_arr', methods='POST')
 def get_order_result_arr():
@@ -3151,7 +3151,7 @@ def get_trades_result_arr():
         return resp
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
 
 @post('/get_commission_rate', methods='POST')
 def get_commission_rate():
@@ -3187,11 +3187,11 @@ def takeShortsOrder(shortsPrice,shortsOnceTradeCoinQuantity,tradeType,symbol,key
             result = request_client.post_order(newClientOrderId=newClientOrderId,reduceOnly=False,symbol=symbol, quantity=coinQuantity,side=OrderSide.SELL, ordertype=OrderType.LIMIT, price=shortsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTC)
             result = json.loads(result)
         if "code" in result and result['code']!=-5022  and result['code']!=-1001  and result['code']!=-2022:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("shorts order error:"+str(result)+","+str(coinQuantity),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("shorts order error:"+str(result)+","+str(coinQuantity),))
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("shortsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("shortsM:"+str(e),))
 
 
     return result
@@ -3218,11 +3218,11 @@ def takeLongsOrder(longsPrice,longsOnceTradeCoinQuantity,tradeType,symbol,key,se
             result = request_client.post_order(newClientOrderId=newClientOrderId,reduceOnly=False,symbol=symbol, quantity=coinQuantity,side=OrderSide.BUY, ordertype=OrderType.LIMIT, price=longsPrice, positionSide="BOTH", timeInForce=TimeInForce.GTC)
             result = json.loads(result)
         if "code" in result and result['code']!=-5022 and result['code']!=-1001:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("longs order error:"+str(result)+","+str(coinQuantity),))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("longs order error:"+str(result)+","+str(coinQuantity),))
         print("--------------")
         print(result)
     except Exception as e:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("longsM:"+str(e),))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("longsM:"+str(e),))
 
     return result
 
@@ -3254,16 +3254,16 @@ def take_open():
                 value = 100
                 quantity = float(decimal.Decimal(AMOUNT_DECIMAL_OBJ[symbol] % (value/price )))
                 ordersResult = takeLongsOrder(price,quantity,"T",symbol,key,secret)
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min(symbol+" take longs")
+                FUNCTION_CLIENT.send_notify_limit_one_min(symbol+" take longs")
             if direction=="shorts":
                 value = 100
                 quantity = float(decimal.Decimal(AMOUNT_DECIMAL_OBJ[symbol] % (value/price )))
                 ordersResult = takeShortsOrder(price,quantity,"T",symbol,key,secret)
-                FUNCTION_CLIENT.send_lark_msg_limit_one_min(symbol+" take shorts")
+                FUNCTION_CLIENT.send_notify_limit_one_min(symbol+" take shorts")
 
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
     resp = json.dumps({'s':'ok'})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
@@ -3276,10 +3276,10 @@ def end_open():
         now = int(time.time()*1000)
         if symbol in TAKE_OPEN_OBJ and TAKE_OPEN_OBJ[symbol]["status"] != "end":
             TAKE_OPEN_OBJ[symbol]["status"] = "end"
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(symbol+" end trade")
+            FUNCTION_CLIENT.send_notify_limit_one_min(symbol+" end trade")
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
     resp = json.dumps({'s':'ok'})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp

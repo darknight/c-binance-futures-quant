@@ -17,13 +17,13 @@ from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
 import numpy as np
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="useData")
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="useData")
 
-PUBLIC_SERVER_IP = "http://"+WEB_ADDRESS+":8888/"
+PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 
 LAST_DATA_UPDATE_TS = 0
 
@@ -63,7 +63,7 @@ def getTickData():
 
 
     if now - LAST_DATA_UPDATE_TS>30000:
-        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("dataStr aways equal LAST_DATA_STR",))
+        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("dataStr aways equal LAST_DATA_STR",))
     if dataStr!=LAST_DATA_STR:
         UPDATE_DATA_STR = True
         LAST_DATA_UPDATE_TS = now
@@ -73,7 +73,7 @@ def getTickData():
 
         ACCOUNT_BALANCE_VALUE = float(dataArr[4])
         if ACCOUNT_BALANCE_VALUE==0:
-            _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("ACCOUNT_BALANCE_VALUE==0",))
+            _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("ACCOUNT_BALANCE_VALUE==0",))
         if dataArr[3]!="":
             BAN_SYMBOL_ARR = dataArr[3].split("@")
         else:
@@ -114,7 +114,7 @@ def getTickData():
                         del ONE_MIN_KLINE_OBJ_ARR[a]["klineArr"][0]
                         ONE_MIN_KLINE_OBJ_ARR[a]["dataError"] = False
                     elif  (klineMin < localMin-2) and (localMin!=1 and localMin!=0):
-                        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("localMin B:"+str(localMin)+",klineMin:"+str(klineMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"])+","+str(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]),))
+                        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("localMin B:"+str(localMin)+",klineMin:"+str(klineMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"])+","+str(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]),))
                         ONE_MIN_KLINE_OBJ_ARR[a]["dataError"] = True
 
 
@@ -162,7 +162,7 @@ def getTickData():
                     LOCAL_ONE_MIN_KLINE_OBJ_ARR[a].append([openPrice,closePrice,priceArr[a][0],priceArr[a][1],serverMin])
                 else:
                     if localMin-1 != serverMin and  (localMin!=1 and localMin!=0):
-                        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("localMin:"+str(localMin)+",serverMin:"+str(serverMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"]),))
+                        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("localMin:"+str(localMin)+",serverMin:"+str(serverMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"]),))
                         LOCAL_ONE_MIN_KLINE_OBJ_ARR = []
 
                 if len(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]) > 3:
@@ -187,7 +187,7 @@ def getTickData():
                         del ONE_MIN_KLINE_OBJ_ARR[a]["klineArr"][0]
                         ONE_MIN_KLINE_OBJ_ARR[a]["dataError"] = False
                     elif localMin < klineMin-2 and  (klineMin!=1 and klineMin!=0):
-                        _thread.start_new_thread(FUNCTION_CLIENT.send_lark_msg_limit_one_min,("localMin A:"+str(localMin)+",klineMin:"+str(klineMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"])+","+str(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]),))
+                        _thread.start_new_thread(FUNCTION_CLIENT.send_notify_limit_one_min,("localMin A:"+str(localMin)+",klineMin:"+str(klineMin)+",symbol:"+str(TRADE_SYMBOL_ARR[a]["symbol"])+","+str(LOCAL_ONE_MIN_KLINE_OBJ_ARR[a]),))
                         ONE_MIN_KLINE_OBJ_ARR[a]["dataError"] = True
 
 

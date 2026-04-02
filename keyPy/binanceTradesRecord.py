@@ -15,12 +15,12 @@ from binance_f.requestclient import RequestClient
 from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-PUBLIC_SERVER_IP = "http://"+WEB_ADDRESS+":8888/"
+PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="ordersRecord",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="ordersRecord",connectMysql =True)
 
 BINANCE_API_KEY =""
 
@@ -95,7 +95,7 @@ def recordTrades(symbol):
     result = json.loads(result)
     print(result)
     if "code" in result:
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(result))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(result))
     else:
         for i in range(len(result)):
 
@@ -148,5 +148,5 @@ while 1:
         try:
             recordTrades(TRADE_SYMBOL_ARR[i]["symbol"])
         except Exception as e:
-            FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(e))
+            FUNCTION_CLIENT.send_notify_limit_one_min(str(e))
         time.sleep(1)

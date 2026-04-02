@@ -6,8 +6,8 @@ import json
 import random
 import traceback
 import _thread
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
 lastTsA = 0
 

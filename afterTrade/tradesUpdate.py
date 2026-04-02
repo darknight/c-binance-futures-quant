@@ -12,10 +12,10 @@ from binance_f.requestclient import RequestClient
 from binance_f.constant.test import *
 from binance_f.base.printobject import *
 from binance_f.model.constant import *
-from config import *
-from commonFunction import FunctionClient
+from settings import settings
+from infra_client import InfraClient
 
-FUNCTION_CLIENT = FunctionClient(larkMsgSymbol="recordOrders",connectMysql =True)
+FUNCTION_CLIENT = InfraClient(larkMsgSymbol="recordOrders",connectMysql =True)
 
 TRADES_TABLE_NAME = "trades_take"
 
@@ -54,7 +54,7 @@ if not tableExit:
 
     FUNCTION_CLIENT.mysql_commit(sql,[])
 
-PUBLIC_SERVER_IP = "http://"+WEB_ADDRESS+":8888/"
+PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 
 response = requests.request("POST", PUBLIC_SERVER_IP+"get_symbol_index", timeout=3).json()
 
@@ -226,7 +226,7 @@ def getBinancePositionFromMyServer():
             POSITION_ARR = []
     except Exception as e:
         ex = traceback.format_exc()
-        FUNCTION_CLIENT.send_lark_msg_limit_one_min(str(ex))
+        FUNCTION_CLIENT.send_notify_limit_one_min(str(ex))
 
 
 def getPositionInfoArrBySymbol(symbol):
