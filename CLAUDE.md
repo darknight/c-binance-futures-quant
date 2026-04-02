@@ -21,7 +21,7 @@ Package management: uv (pyproject.toml + uv.lock)
 
 - **ws-server/** — Rust rewrite of the WebSocket aggregation server (replaces wsServer.cpp). Uses tokio + tokio-tungstenite. HashMap-based storage (no fixed array limits), structured logging (tracing), optional token auth, graceful shutdown. Protocol-compatible with the C++ version — Python clients require zero changes.
 - **wsServer.cpp** — Legacy C++ WebSocket server (being replaced by ws-server/). Compiled with: `g++ wsServer.cpp -o wsServer.out -lboost_system` (requires websocketpp + boost)
-- **infra_client.py** — `InfraClient` class providing MySQL (single + pool), WebSocket (A/B channels), Telegram notifications, Aliyun ECS discovery, Aliyun OSS, and Binance order routing
+- **infra_client.py** — `InfraClient` class providing PostgreSQL via SQLAlchemy/SQLModel, WebSocket (A/B channels), Telegram notifications, Aliyun ECS discovery, Aliyun OSS, and Binance order routing
 - **settings.py** — pydantic-settings based configuration, reads from `.env` file. Template: `.env.example`
 - **binance_f/** — Modified Binance Futures Python SDK (forked from official)
 - **webServer.py** — Bottle-based HTTP server providing REST APIs for order management, position queries, trade recording, and machine status
@@ -34,9 +34,12 @@ Package management: uv (pyproject.toml + uv.lock)
 | `keyPy/` | Critical operations: position monitoring (`getBinancePosition`, `positionRisk`, `wsPosition`), stop-loss (`makerStopLoss`), order timeout (`checkTimeoutOrders`), commission tracking |
 | `afterTrade/` | Post-trade data processing and OSS upload for frontend display |
 | `react-front/` | React frontend (webpack, antd, echarts, mobx). Reads data from Aliyun OSS |
-| `updateSymbol/` | SQL scripts and Python for managing the `trade_symbol` table in MySQL |
+| `updateSymbol/` | SQL scripts and Python for managing the `trade_symbol` table in PostgreSQL |
 | `tool/` | Speed test utilities for Binance API and tick data |
 | `ws-server/` | Rust WebSocket aggregation server (tokio + tokio-tungstenite). Replaces wsServer.cpp |
+| `app/` | Python package: `database.py` (SQLAlchemy engine + session factory), `app/models/` (15 SQLModel models) |
+| `alembic/` | Alembic migration environment and versioned migration scripts |
+| `tests/` | Test suite: `test_database.py`, `test_models.py` |
 
 ## Build & Run Commands
 
@@ -78,6 +81,21 @@ uv run python webServer.py
 nohup ./webServer.py >/dev/null &
 ```
 Preferred deployment: use `dataPy/uploadDataPy.py` to distribute and run across Aliyun servers, with automatic source file destruction after launch (security measure).
+
+### Database (PostgreSQL + SQLModel + Alembic)
+
+Stack: PostgreSQL, SQLAlchemy/SQLModel ORM, Alembic migrations. Configure `DATABASE_URL` in `.env` (default: `postgresql+psycopg://localhost:5432/quant`).
+
+```bash
+# Apply all pending migrations
+uv run alembic upgrade head
+
+# Generate a new migration from model changes
+uv run alembic revision --autogenerate -m "description"
+
+# Run tests
+uv run pytest tests/ -v
+```
 
 ### React Frontend
 ```bash
