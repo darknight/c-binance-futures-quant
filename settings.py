@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql://localhost:5432/quant"
+    database_url: str = "postgresql+psycopg://localhost:5432/quant"
 
     # Telegram
     telegram_bot_token: str = ""
