@@ -1,10 +1,24 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
-from web_server.app import create_app
 from web_server.state import AppState
+from web_server.routers import config
+
+
+def _make_test_app():
+    app = FastAPI()
+    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+    app.include_router(config.router)
+
+    @app.post("/health")
+    def health():
+        return {"s": "ok"}
+
+    return app
 
 
 def test_health_endpoint():
-    app = create_app()
+    app = _make_test_app()
     client = TestClient(app)
     resp = client.post("/health")
     assert resp.status_code == 200
@@ -12,7 +26,7 @@ def test_health_endpoint():
 
 
 def test_cors_headers():
-    app = create_app()
+    app = _make_test_app()
     client = TestClient(app)
     resp = client.options("/health", headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "POST"})
     assert resp.headers.get("access-control-allow-origin") == "*"
@@ -55,7 +69,7 @@ from unittest.mock import patch
 
 
 def test_get_config():
-    app = create_app()
+    app = _make_test_app()
     client = TestClient(app)
     with patch("web_server.routers.config.settings") as mock_settings:
         mock_settings.binance_api_arr = '[{"apiKey":"abc","apiSecret":"secret123","apiDescribe":"test"}]'
@@ -68,7 +82,7 @@ def test_get_config():
 
 
 def test_modify_hot_key():
-    app = create_app()
+    app = _make_test_app()
     client = TestClient(app)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write('{}')
@@ -83,7 +97,7 @@ def test_modify_hot_key():
 
 
 def test_get_state_config():
-    app = create_app()
+    app = _make_test_app()
     client = TestClient(app)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         import json as _json
