@@ -1,4 +1,5 @@
 import calendar
+from contextlib import contextmanager
 import socket
 import json
 import requests
@@ -8,7 +9,6 @@ from datetime import datetime as dt, timezone
 from websocket import create_connection
 from settings import settings
 from sqlmodel import create_engine
-from sqlalchemy import text
 from aliyunsdkcore.client import AcsClient
 from aliyunsdkcore.request import CommonRequest
 from aliyunsdkcore.acs_exception.exceptions import ClientException
@@ -109,12 +109,12 @@ class InfraClient(object):
 
     def mysql_select(self, sql, params):
         with self._engine.connect() as conn:
-            result = conn.execute(text(sql), params if isinstance(params, dict) else {})
+            result = conn.exec_driver_sql(sql, tuple(params) if params else ())
             return result.fetchall()
 
     def mysql_commit(self, sql, params):
         with self._engine.connect() as conn:
-            conn.execute(text(sql), params if isinstance(params, dict) else {})
+            conn.exec_driver_sql(sql, tuple(params) if params else ())
             conn.commit()
 
     def mysql_pool_select(self, q, params):
@@ -123,6 +123,15 @@ class InfraClient(object):
     def mysql_pool_commit(self, q, params):
         self.mysql_commit(q, params)
         return True
+
+    @contextmanager
+    def get_session(self):
+        from sqlmodel import Session
+        session = Session(self._engine)
+        try:
+            yield session
+        finally:
+            session.close()
 
     def get_private_ip(self):
         privateIP = ""
