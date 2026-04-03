@@ -1,3 +1,6 @@
+# DEPRECATED: This file is kept as reference only.
+# The active web server is now web_server/app.py (FastAPI).
+# Entry point: run_web_server.py
 #!/usr/bin/env python3
 # coding=utf-8
 import _thread

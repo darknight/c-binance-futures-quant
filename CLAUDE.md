@@ -24,7 +24,8 @@ Package management: uv (pyproject.toml + uv.lock)
 - **infra_client.py** — `InfraClient` class providing PostgreSQL via SQLAlchemy/SQLModel, WebSocket (A/B channels), Telegram notifications, Aliyun ECS discovery, Aliyun OSS, and Binance order routing
 - **settings.py** — pydantic-settings based configuration, reads from `.env` file. Template: `.env.example`
 - **binance_f/** — Modified Binance Futures Python SDK (forked from official)
-- **webServer.py** — Bottle-based HTTP server providing REST APIs for order management, position queries, trade recording, and machine status
+- **web_server/** — FastAPI-based HTTP server providing REST APIs for order management, position queries, trade recording, and machine status. Entry point: `run_web_server.py`
+- **webServer.py** — Legacy Bottle-based HTTP server (deprecated, kept as reference). Replaced by `web_server/`
 
 ## Key Modules
 
@@ -37,6 +38,7 @@ Package management: uv (pyproject.toml + uv.lock)
 | `updateSymbol/` | SQL scripts and Python for managing the `trade_symbol` table in PostgreSQL |
 | `tool/` | Speed test utilities for Binance API and tick data |
 | `ws-server/` | Rust WebSocket aggregation server (tokio + tokio-tungstenite). Replaces wsServer.cpp |
+| `web_server/` | FastAPI HTTP server: `app.py` (app factory), `state.py` (shared state), `binance_helpers.py` (Binance API utils), `routers/` (8 route modules) |
 | `app/` | Python package: `database.py` (SQLAlchemy engine + session factory), `app/models/` (15 SQLModel models) |
 | `alembic/` | Alembic migration environment and versioned migration scripts |
 | `tests/` | Test suite: `test_database.py`, `test_models.py` |
@@ -74,7 +76,7 @@ nohup ./wsServer.out >/dev/null &
 uv sync
 
 # Run any Python service locally
-uv run python webServer.py
+uv run python run_web_server.py
 
 # Each Python file runs as its own service on a separate server/IP
 # Remote deployment still uses shebang (#!/usr/bin/env python3):
@@ -112,6 +114,7 @@ npm run build      # production build
 - Kline data is split into two messages: latest 2 bars (real-time) and full history (periodic sync), to minimize parsing overhead on trading servers
 - Risk control in `commission.py`: per-symbol 4h loss > 150u or 24h loss > 1800u triggers trading ban; total 24h loss > 3000u halts all trading
 - Stop-loss orders in `makerStopLoss` trigger on >5% position change, split into 5 orders at staggered prices (5%, 5.5%, 6%, 6.5%, 7% from cost)
+- Web server uses FastAPI with CORSMiddleware; all endpoints accept form data via `Form()` for backward compatibility with the React frontend
 
 ## Important Notes
 
