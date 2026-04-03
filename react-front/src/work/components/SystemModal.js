@@ -5,7 +5,6 @@ import {coinArr,coinChineseObj} from "../constants/coinType";
 import {connect} from "react-redux";
 import * as action from "../actions";
 import {bindActionCreators} from "redux";
-import LoginModal from "./LoginModal";
 import {publicServerURL} from "../constants/serverURL";
 import {deepCopy} from "../constants/commonFunction";
 const { TextArea } = Input;

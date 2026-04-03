@@ -1,14 +1,9 @@
 import { ADD_USER_INFO,MODIFY_USER_INFO,CLEAR_USER_INFO } from '../constants/actionTypes';
 //初始化状态
 const initialState ={
-    account:"",
-    name:"",
-    registerTime:"",
     binanceApiArr:[],
     hotKeyConfigObj:{},
     stateConfigObj:{},
-    serverInfoObj:{},
-    showSymbolObj:{}
 };
 
 export default function userInfo(state = initialState,action) {

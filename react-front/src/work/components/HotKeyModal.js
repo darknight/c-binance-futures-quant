@@ -115,7 +115,6 @@ class HotKeyModal extends React.Component {
         const {userInfo} = this.props
 
         let formData = new FormData();
-        formData.append("accessToken",userInfo["accessToken"]);
         formData.append("newHotKeyConfigObj",JSON.stringify(newHotKeyConfigObj));
         fetch(publicServerURL+"/modify_hot_key", {
             method:'POST',

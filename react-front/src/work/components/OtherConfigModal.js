@@ -150,9 +150,6 @@ class OtherConfigModal extends React.Component {
         })
     }
     getServerStateConfig = ()=>{
-        const {userInfo} = this.props
-        let formData = new FormData();
-        formData.append("accessToken",userInfo["accessToken"]);
         fetch(publicServerURL+"/get_state_config", {
             method:'POST',
             body:formData
@@ -175,7 +172,6 @@ class OtherConfigModal extends React.Component {
     }
     modifyStateConfig = ()=>{
         const {otherConfig} = this.props
-        const {userInfo} = this.props
         let stateConfigObj = {
             "autoBuyBnbConfigArr":otherConfig.autoBuyBnbConfigArr,
             "klineCountConfigArr":otherConfig.klineCountConfigArr,
@@ -198,7 +194,6 @@ class OtherConfigModal extends React.Component {
             "serverUpdateTsConfigArr":parseInt(new Date().getTime()),
         }
         let formData = new FormData();
-        formData.append("accessToken",userInfo["accessToken"]);
         formData.append("stateConfigObj",JSON.stringify(stateConfigObj));
         fetch(publicServerURL+"/modify_state_config", {
             method:'POST',

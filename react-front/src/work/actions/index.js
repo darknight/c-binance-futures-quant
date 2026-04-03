@@ -1,5 +1,4 @@
-import {publicServerURL, serverURL} from "../constants/serverURL";
-import {message} from "antd";
+import {publicServerURL} from "../constants/serverURL";
 import {
     MODIFY_CHAT_ARR,
     CHANGE_TITLE_COLOR,
@@ -56,154 +55,29 @@ import {
     SWITCH_TABLE_EXCHANGE,
     UPDATE_TIMESTAMP
 } from '../constants/actionTypes';
-import {setCookie} from "../constants/cookie";
-import {realHotKeyConfigDefaultObj} from "../constants/hotKey.js";
-
-export function register(info) {
+export function loadConfig() {
     return async(dispatch,getState) => {
-        var myReg=/^[a-zA-Z0-9_-]+@([a-zA-Z0-9]+\.)+(com|cn|net|org)$/;
-
-        let formData = new FormData();
-        formData.append("account", info.account);
-        formData.append("password",info.password);
-        formData.append("name", info.name);
-        formData.append("newHotKeyConfigObj",JSON.stringify(realHotKeyConfigDefaultObj));
-        let response = await fetch(publicServerURL+"/register", {
+        return await fetch(publicServerURL+"/get_config", {
             method:'POST',
-            body:formData
-        }).then((response)=>{
-            if (response.ok) {
-                return response.json();
-            }
-        }).then((response)=>{
-            if (response['s'] =="ok") {
-                message.success('注册成功');
-                dispatch(login(info));
-                return true;
-            } else if(response['s'] =="nameLengthError") {
-                message.error('昵称应该为4到20位');
-
-            } else if(response['s'] =="repeatRegister") {
-                message.error('该账号已经存在');
-            }   else if(response['s'] =="passwordLengthError") {
-                message.error('密码应该为4到20位');
-            }  else if(response['s'] =="accountLengthError") {
-                message.error('账号应该为4到20位');
-            }
-            return false;
-        }).catch((error)=>{
-            message.error('网络错误');
-            console.error(error);
-            return false;
-        });
-        return response;
-
-        //这里的type一定要全局唯一,因为状态变一次每个Reducer都会根据类型比对一遍
-
-    };
-}
-
-export function login(info) {
-    return async(dispatch,getState) => {
-        let formData = new FormData();
-        formData.append("account", info.account);
-        formData.append("password",info.password);
-
-        return await fetch(publicServerURL+"/login", {
-            method:'POST',
-            body:formData,
-            charset:"utf-8"
         }).then((response)=>{
             if (response.ok) {
                 return response.json();
             }
         }).then((response)=>{
             if(response['s'] =="ok") {
-                message.success('登陆成功');
-                setCookie("loginInfo",JSON.stringify({"account":response['account'],"password":response['password']}));
                 let item = {
-                    account:response['account'],
-                    password:response['password'],
-                    name:response['name'],
                     binanceApiArr:response['binanceApiArr'],
                     hotKeyConfigObj:response['hotKeyConfigObj'],
                     stateConfigObj:response['stateConfigObj'],
-                    serverInfoObj:response['serverInfoObj'],
-                    accessToken:response['accessToken'],
-                    showSymbolObj:response['showSymbolObj']
                 };
                 dispatch(changeUserInfo(item));
                 return true;
-            } else if(response['status'] =="noRegister") {
-                message.error('该账号尚未注册');
-                return false;
-
-            } else if(response['status'] =="passwordError") {
-                message.error('密码错误');
-                return false;
-            }
-
-
-        }).catch((error)=>{
-            message.error('登陆失败');
-            console.error(error);
-            return false;
-        });
-        //这里的type一定要全局唯一,因为状态变一次每个Reducer都会根据类型比对一遍
-
-    };
-}
-
-export function modifyPassword(info) {
-    return async(dispatch,getState) => {
-        let formData = new FormData();
-        formData.append("account", info.account);
-        formData.append("password",info.password);
-        formData.append("code",info.code);
-        let response = await fetch(serverURL+"/modify_password", {
-            method:'POST',
-            body:formData
-        }).then((response)=>{
-            if (response.ok) {
-                return response.json();
-            }
-        }).then((response)=>{
-            if (response['status'] =="success") {
-                message.success('修改成功，正在自动登录');
-                dispatch(login(info));
-                return true;
-            } else if(response['status'] =="nameLengthError") {
-                message.error('昵称长度有误');
-
-            } else if(response['status'] =="repeatRegister") {
-                message.error('该账号已经存在');
-            } else if(response['status'] =="passwordLengthError") {
-                message.error('密码含有非法字符');
-            }else if(response['status'] =="nameUnlawful") {
-                message.error('昵称含有非法字符');
-            }  else if(response['status'] =="passwordLengthError") {
-                message.error('密码应该为4到20位');
-            }  else if(response['status'] =="accountLengthError") {
-                message.error('账号应该为11位手机号');
-            }  else if(response['status'] =="accountNoExit") {
-                message.error('该手机尚未注册');
-            }  else if(response['status'] =="followCoinLengthError") {
-                message.error('验证码长度有误');
-            }   else if(response['status'] =="codeError") {
-                message.error('验证码输入错误');
-            }   else {
-                message.error('网络错误');
             }
             return false;
         }).catch((error)=>{
-            message.error('网络错误');
             console.error(error);
             return false;
         });
-        return response;
-
-        //这里的type一定要全局唯一,因为状态变一次每个Reducer都会根据类型比对一遍
-
     };
 }
 export function changeUserInfo(newUserInfo){

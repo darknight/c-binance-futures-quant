@@ -73,7 +73,7 @@ class UserAliyunOSSUpload extends React.Component {
         const { OSSData } = this.state;
 
         const suffix = file.name.slice(file.name.lastIndexOf('.'));
-        const filename = "avatar/"+this.props.userInfo.account;
+        const filename = "avatar/"+"default";
         file.url = OSSData.dir + filename;
         return file;
     };
@@ -81,9 +81,9 @@ class UserAliyunOSSUpload extends React.Component {
     getExtraData = file => {
         const { OSSData } = this.state;
         console.info(file)
-        file.url = OSSData.dir + "avatar/"+this.props.userInfo.account
+        file.url = OSSData.dir + "avatar/"+"default"
         return {
-            key: OSSData.dir + "avatar/"+this.props.userInfo.account,
+            key: OSSData.dir + "avatar/"+"default",
             OSSAccessKeyId: OSSData.accessId,
             policy: OSSData.policy,
             Signature: OSSData.signature,

@@ -390,7 +390,7 @@ class Show extends Component {
     }
 
     componentDidMount = () => {
-        console.error("componentDidMount")
+        this.props.loadConfig()
         let storage=window.localStorage;
         this.getDayIncomeData()
         this.getQuantData()
@@ -831,7 +831,8 @@ const mapDispatchToProps  = (dispatch, ownProps) => {
     return bindActionCreators({
         modifyChatArr:action.modifyChatArr,
         switchSubPage:action.switchSubPage,
-        changeUserInfo:action.changeUserInfo
+        changeUserInfo:action.changeUserInfo,
+        loadConfig:action.loadConfig
     }, dispatch);
 };
 export default withRouter(connect(mapStateToProps,mapDispatchToProps)(Show));
