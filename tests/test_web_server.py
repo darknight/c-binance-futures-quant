@@ -47,3 +47,52 @@ def test_utc_encoder_datetime():
 def test_utc_encoder_non_datetime():
     result = json_dumps({"value": 42})
     assert '"value": 42' in result
+
+
+import os
+import tempfile
+from unittest.mock import patch
+
+
+def test_get_config():
+    app = create_app()
+    client = TestClient(app)
+    with patch("web_server.routers.config.settings") as mock_settings:
+        mock_settings.binance_api_arr = '[{"apiKey":"abc","apiSecret":"secret123","apiDescribe":"test"}]'
+        resp = client.post("/get_config")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["s"] == "ok"
+    assert data["binanceApiArr"][0]["apiSecret"] == ""
+    assert data["binanceApiArr"][0]["apiKey"] == "abc"
+
+
+def test_modify_hot_key():
+    app = create_app()
+    client = TestClient(app)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write('{}')
+        temp_path = f.name
+    try:
+        with patch("web_server.routers.config.USER_CONFIG_PATH", temp_path):
+            resp = client.post("/modify_hot_key", data={"newHotKeyConfigObj": '{"key1":"value1"}'})
+        assert resp.status_code == 200
+        assert resp.json()["newHotKeyConfigObj"] == {"key1": "value1"}
+    finally:
+        os.unlink(temp_path)
+
+
+def test_get_state_config():
+    app = create_app()
+    client = TestClient(app)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        import json as _json
+        _json.dump({"state_config_obj": {"mode": "test"}}, f)
+        temp_path = f.name
+    try:
+        with patch("web_server.routers.config.USER_CONFIG_PATH", temp_path):
+            resp = client.post("/get_state_config")
+        assert resp.status_code == 200
+        assert resp.json()["stateConfigObj"] == {"mode": "test"}
+    finally:
+        os.unlink(temp_path)
