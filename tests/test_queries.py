@@ -1478,3 +1478,413 @@ def test_trades_boll_percent_calculation(session):
     diff = boll_up - boll_down
     assert diff == Decimal("10")
     assert boll_down == Decimal("100")
+
+# ---------------------------------------------------------------------------
+# commission.py: Income — DELETE old, SELECT all order by id DESC
+# ---------------------------------------------------------------------------
+
+def _make_income_simple(session, *, symbol="BTCUSDT", binance_ts=1000000000000,
+                         income_val="1.5", trade_id="tid1") -> Income:
+    row = Income(
+        symbol=symbol,
+        binance_ts=binance_ts,
+        income=Decimal(income_val),
+        trade_id=trade_id,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_income_delete_old_rows(session):
+    """DELETE Income WHERE binance_ts < threshold removes only old rows."""
+    from sqlalchemy import delete as sa_delete
+    _make_income_simple(session, binance_ts=500, trade_id="old")
+    _make_income_simple(session, binance_ts=1500, trade_id="new")
+
+    session.exec(sa_delete(Income).where(Income.binance_ts < 1000))
+    session.commit()
+
+    rows = session.exec(select(Income)).all()
+    assert len(rows) == 1
+    assert rows[0].trade_id == "new"
+
+
+def test_income_delete_old_rows_none_deleted(session):
+    """DELETE Income WHERE binance_ts < very-low threshold deletes nothing."""
+    from sqlalchemy import delete as sa_delete
+    _make_income_simple(session, binance_ts=9000, trade_id="keep")
+
+    session.exec(sa_delete(Income).where(Income.binance_ts < 1))
+    session.commit()
+
+    rows = session.exec(select(Income)).all()
+    assert len(rows) == 1
+
+
+def test_income_select_all_ordered_desc(session):
+    """SELECT Income ORDER BY id DESC returns rows in descending id order."""
+    _make_income_simple(session, binance_ts=1000, trade_id="a")
+    _make_income_simple(session, binance_ts=2000, trade_id="b")
+    _make_income_simple(session, binance_ts=3000, trade_id="c")
+
+    rows = session.exec(select(Income).order_by(Income.id.desc())).all()
+    assert len(rows) == 3
+    assert rows[0].trade_id == "c"
+    assert rows[2].trade_id == "a"
+
+
+def test_income_insert_without_access_token(session):
+    """INSERT Income without access_token uses default empty string."""
+    row = Income(
+        income=Decimal("2.0"),
+        trade_id="t999",
+        binance_ts=1700000000000,
+        symbol="SOLUSDT",
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    assert row.id is not None
+    assert row.access_token == ""
+
+
+# ---------------------------------------------------------------------------
+# commission.py: IncomeHistoryTake — SELECT limit 2000, INSERT batch
+# ---------------------------------------------------------------------------
+
+def _make_income_history_take(session, *, symbol="BTCUSDT",
+                               binance_ts=1000000000000,
+                               income_type="REALIZED_PNL",
+                               income_val="10.0", asset="USDT",
+                               trade_id="htid1") -> IncomeHistoryTake:
+    row = IncomeHistoryTake(
+        symbol=symbol,
+        binance_ts=binance_ts,
+        income_type=income_type,
+        income=Decimal(income_val),
+        asset=asset,
+        trade_id=trade_id,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_income_history_take_select_desc_limit(session):
+    """SELECT IncomeHistoryTake ORDER BY id DESC LIMIT 2000."""
+    for i in range(5):
+        _make_income_history_take(session, trade_id=f"h{i}", binance_ts=1000 + i)
+
+    rows = session.exec(
+        select(IncomeHistoryTake).order_by(IncomeHistoryTake.id.desc()).limit(2000)
+    ).all()
+    assert len(rows) == 5
+    # Highest id first
+    assert rows[0].trade_id == "h4"
+
+
+def test_income_history_take_insert_batch(session):
+    """session.add_all inserts multiple IncomeHistoryTake rows in one commit."""
+    new_rows = [
+        IncomeHistoryTake(symbol="BTCUSDT", income=Decimal("5"), trade_id="b1",
+                          binance_ts=1000, income_type="REALIZED_PNL", asset="USDT"),
+        IncomeHistoryTake(symbol="ETHUSDT", income=Decimal("3"), trade_id="b2",
+                          binance_ts=2000, income_type="COMMISSION", asset="BNB"),
+    ]
+    session.add_all(new_rows)
+    session.commit()
+
+    rows = session.exec(select(IncomeHistoryTake)).all()
+    assert len(rows) == 2
+    symbols = {r.symbol for r in rows}
+    assert symbols == {"BTCUSDT", "ETHUSDT"}
+
+
+# ---------------------------------------------------------------------------
+# binanceOrdersRecord.py: Order — SELECT by symbol, INSERT, UPDATE
+# ---------------------------------------------------------------------------
+
+def _make_order(session, *, symbol="BTCUSDT", order_id=12345,
+                status="NEW", binance_ts=1700000000000,
+                update_time=1700000001000, my_ts=1700000000) -> Order:
+    row = Order(
+        symbol=symbol,
+        order_id=order_id,
+        status=status,
+        binance_ts=binance_ts,
+        update_time=update_time,
+        my_ts=my_ts,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_order_select_by_symbol_ordered_desc(session):
+    """SELECT Order WHERE symbol ORDER BY id DESC LIMIT 1000."""
+    _make_order(session, symbol="BTCUSDT", order_id=1, binance_ts=1000)
+    _make_order(session, symbol="BTCUSDT", order_id=2, binance_ts=2000)
+    _make_order(session, symbol="ETHUSDT", order_id=3, binance_ts=1500)
+
+    rows = session.exec(
+        select(Order).where(Order.symbol == "BTCUSDT")
+        .order_by(Order.id.desc()).limit(1000)
+    ).all()
+    assert len(rows) == 2
+    # Highest id first
+    assert rows[0].order_id == 2
+    assert rows[1].order_id == 1
+
+
+def test_order_insert_all_fields(session):
+    """INSERT Order with all 22 columns maps correctly to model fields."""
+    row = Order(
+        avg_price=Decimal("42000"),
+        client_order_id="cid_abc",
+        cum_quote=Decimal("42"),
+        executed_qty=Decimal("0.001"),
+        order_id=99999,
+        orig_qty=Decimal("0.001"),
+        orig_type="LIMIT",
+        price=Decimal("42000"),
+        reduce_only="False",
+        side="BUY",
+        position_side="LONG",
+        status="FILLED",
+        stop_price=Decimal("0"),
+        close_position="False",
+        symbol="BTCUSDT",
+        time_in_force="GTC",
+        order_type="LIMIT",
+        update_time=1700000001000,
+        working_type="CONTRACT_PRICE",
+        price_protect="False",
+        binance_ts=1700000000000,
+        my_ts=1700000000,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    assert row.id is not None
+    fetched = session.exec(select(Order).where(Order.order_id == 99999)).one()
+    assert fetched.client_order_id == "cid_abc"
+    assert fetched.side == "BUY"
+    assert fetched.status == "FILLED"
+
+
+def test_order_update_status(session):
+    """UPDATE Order status and my_ts by id."""
+    row = _make_order(session, status="NEW", my_ts=1000)
+
+    db_row = session.get(Order, row.id)
+    db_row.status = "noExit"
+    db_row.my_ts = 9999
+    session.add(db_row)
+    session.commit()
+    session.refresh(db_row)
+
+    assert db_row.status == "noExit"
+    assert db_row.my_ts == 9999
+
+
+def test_order_select_new_status_with_my_ts_filter(session):
+    """SELECT Order WHERE status='NEW' AND my_ts < threshold."""
+    _make_order(session, status="NEW", my_ts=500)
+    _make_order(session, status="NEW", my_ts=9000)
+    _make_order(session, status="FILLED", my_ts=500)
+
+    rows = session.exec(
+        select(Order).where(Order.status == "NEW", Order.my_ts < 3600)
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].my_ts == 500
+
+
+# ---------------------------------------------------------------------------
+# binanceTradesRecord.py: Trade — SELECT by symbol, INSERT batch
+# ---------------------------------------------------------------------------
+
+def _make_trade(session, *, symbol="BTCUSDT", binance_id=55555,
+                ts=1700000000000, my_ts=1700000000) -> Trade:
+    row = Trade(
+        symbol=symbol,
+        binance_id=binance_id,
+        ts=ts,
+        my_ts=my_ts,
+        buyer=True,
+        maker=False,
+        order_id=12345,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_trade_select_by_symbol_ordered_desc(session):
+    """SELECT Trade WHERE symbol ORDER BY id DESC LIMIT 1000."""
+    _make_trade(session, symbol="BTCUSDT", binance_id=1, ts=1000)
+    _make_trade(session, symbol="BTCUSDT", binance_id=2, ts=2000)
+    _make_trade(session, symbol="ETHUSDT", binance_id=3, ts=1500)
+
+    rows = session.exec(
+        select(Trade).where(Trade.symbol == "BTCUSDT")
+        .order_by(Trade.id.desc()).limit(1000)
+    ).all()
+    assert len(rows) == 2
+    assert rows[0].binance_id == 2
+
+
+def test_trade_insert_batch(session):
+    """session.add_all inserts multiple Trade rows."""
+    new_rows = [
+        Trade(symbol="BTCUSDT", binance_id=10, ts=1000, my_ts=1, buyer=True, maker=False, order_id=1),
+        Trade(symbol="ETHUSDT", binance_id=20, ts=2000, my_ts=2, buyer=False, maker=True, order_id=2),
+    ]
+    session.add_all(new_rows)
+    session.commit()
+
+    rows = session.exec(select(Trade)).all()
+    assert len(rows) == 2
+    ids = {r.binance_id for r in rows}
+    assert ids == {10, 20}
+
+
+def test_trade_skip_duplicate_binance_id(session):
+    """Simulate dedup: skip insert if binance_id already in existing records."""
+    existing = _make_trade(session, symbol="BTCUSDT", binance_id=777)
+
+    loaded = session.exec(
+        select(Trade).where(Trade.symbol == "BTCUSDT").order_by(Trade.id.desc()).limit(1000)
+    ).all()
+
+    insert_flag = True
+    for row in loaded:
+        if int(row.binance_id) == 777:
+            insert_flag = False
+            break
+
+    assert insert_flag is False
+    count = session.exec(select(Trade)).all()
+    assert len(count) == 1
+
+
+# ---------------------------------------------------------------------------
+# updateTradeSymbol.py: TradeSymbol — TRUNCATE, INSERT batch, UPDATE fields
+# ---------------------------------------------------------------------------
+
+def test_trade_symbol_truncate(session):
+    """DELETE all TradeSymbol rows simulates TRUNCATE."""
+    from sqlalchemy import delete as sa_delete
+    _make_trade_symbol(session, symbol="BTCUSDT")
+    _make_trade_symbol(session, symbol="ETHUSDT")
+
+    session.exec(sa_delete(TradeSymbol))
+    session.commit()
+
+    rows = session.exec(select(TradeSymbol)).all()
+    assert rows == []
+
+
+def test_trade_symbol_insert_batch(session):
+    """session.add_all inserts multiple TradeSymbol rows."""
+    new_rows = [
+        TradeSymbol(symbol="BTCUSDT", coin="BTC", quote="USDT", status="yes",
+                    index=0, default_show=False, link_symbol_arr=[]),
+        TradeSymbol(symbol="ETHUSDT", coin="ETH", quote="USDT", status="yes",
+                    index=1, default_show=False, link_symbol_arr=[]),
+    ]
+    session.add_all(new_rows)
+    session.commit()
+
+    rows = session.exec(select(TradeSymbol)).all()
+    assert len(rows) == 2
+
+
+def test_trade_symbol_update_quote_volume(session):
+    """UPDATE quote_volume by symbol."""
+    _make_trade_symbol(session, symbol="BTCUSDT")
+
+    row = session.exec(select(TradeSymbol).where(TradeSymbol.symbol == "BTCUSDT")).first()
+    row.quote_volume = Decimal("999999.5")
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    assert row.quote_volume == Decimal("999999.5")
+
+
+def test_trade_symbol_update_index(session):
+    """UPDATE index by id (batch re-index operation)."""
+    r1 = _make_trade_symbol(session, symbol="BTCUSDT", index=0, status="yes")
+    r2 = _make_trade_symbol(session, symbol="ETHUSDT", index=0, status="yes")
+
+    active = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
+    for i, r in enumerate(active):
+        r.index = i
+        session.add(r)
+    session.commit()
+
+    rows = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
+    assert rows[0].index == 0
+    assert rows[1].index == 1
+
+
+def test_trade_symbol_update_default_show(session):
+    """UPDATE default_show — highest quoteVolume gets True, others False."""
+    _make_trade_symbol(session, symbol="BTCUSDT", coin="BTC")
+    _make_trade_symbol(session, symbol="BTCPERP", coin="BTC")
+
+    # Set quote volumes to determine ordering
+    r1 = session.exec(select(TradeSymbol).where(TradeSymbol.symbol == "BTCUSDT")).first()
+    r2 = session.exec(select(TradeSymbol).where(TradeSymbol.symbol == "BTCPERP")).first()
+    r1.quote_volume = Decimal("1000")
+    r2.quote_volume = Decimal("50")
+    session.add(r1)
+    session.add(r2)
+    session.commit()
+
+    coin_rows = session.exec(
+        select(TradeSymbol).where(TradeSymbol.coin == "BTC")
+        .order_by(TradeSymbol.quote_volume.desc())
+    ).all()
+    for b, row in enumerate(coin_rows):
+        row.default_show = (b == 0)
+        session.add(row)
+    session.commit()
+
+    btcusdt = session.exec(select(TradeSymbol).where(TradeSymbol.symbol == "BTCUSDT")).first()
+    btcperp = session.exec(select(TradeSymbol).where(TradeSymbol.symbol == "BTCPERP")).first()
+    assert btcusdt.default_show is True
+    assert btcperp.default_show is False
+
+
+def test_trade_symbol_update_link_symbol_arr(session):
+    """UPDATE link_symbol_arr with list of symbols sharing the same coin."""
+    _make_trade_symbol(session, symbol="BTCUSDT", coin="BTC")
+    _make_trade_symbol(session, symbol="BTCBUSD", coin="BTC")
+    _make_trade_symbol(session, symbol="ETHUSDT", coin="ETH")
+
+    all_rows = session.exec(select(TradeSymbol).order_by(TradeSymbol.id.asc())).all()
+    for row in all_rows:
+        link_rows = session.exec(
+            select(TradeSymbol).where(TradeSymbol.coin == row.coin)
+        ).all()
+        row.link_symbol_arr = [r.symbol for r in link_rows]
+        session.add(row)
+    session.commit()
+
+    btcusdt = session.exec(select(TradeSymbol).where(TradeSymbol.symbol == "BTCUSDT")).first()
+    ethusdt = session.exec(select(TradeSymbol).where(TradeSymbol.symbol == "ETHUSDT")).first()
+    assert set(btcusdt.link_symbol_arr) == {"BTCUSDT", "BTCBUSD"}
+    assert ethusdt.link_symbol_arr == ["ETHUSDT"]

@@ -17,6 +17,8 @@ from binance_f.base.printobject import *
 from binance_f.model.constant import *
 from settings import settings
 from infra_client import InfraClient
+from sqlmodel import select
+from app.models.trade import Trade
 
 PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 
@@ -30,7 +32,7 @@ response = requests.request("POST", PUBLIC_SERVER_IP+"get_symbol_index", timeout
 
 TRADE_SYMBOL_ARR = response["d"]
 
-TRADES_TABLE_NAME = "binance_trades"
+TRADES_TABLE_NAME = "trade"
 
 
 
@@ -53,11 +55,13 @@ def recordTrades(symbol):
     global BINANCE_API_KEY,BINANCE_API_SECRET,TRADES_TABLE_NAME
     now = int(time.time())
     updateBnbPrice()
-    sql = "select `ts`,`orderId`,`binanceId`,`id` from "+TRADES_TABLE_NAME+" where symbol=%s order by id desc limit 1000"
-    tradesData = FUNCTION_CLIENT.mysql_select(sql,[symbol])
+    with FUNCTION_CLIENT.get_session() as session:
+        tradesData = session.exec(
+            select(Trade).where(Trade.symbol == symbol).order_by(Trade.id.desc()).limit(1000)
+        ).all()
     lastBinanceTs = 0
     if len(tradesData)>0:
-        lastBinanceTs = tradesData[0][0]
+        lastBinanceTs = tradesData[0].ts
 
 
     request_client = RequestClient(api_key=BINANCE_API_KEY,secret_key=BINANCE_API_SECRET)
@@ -67,21 +71,14 @@ def recordTrades(symbol):
     if "code" in result:
         FUNCTION_CLIENT.send_notify_limit_one_min(str(result))
     else:
+        new_trades = []
         for i in range(len(result)):
 
             buyer = result[i]['buyer']
-            if buyer:
-                buyer = 1
-            else:
-                buyer = 0
             commission = result[i]['commission']
             commissionAsset = result[i]['commissionAsset']
             binanceId = result[i]['id']
             maker = result[i]['maker']
-            if maker:
-                maker = 1
-            else:
-                maker = 0
 
             orderId = result[i]['orderId']
             price = result[i]['price']
@@ -99,18 +96,31 @@ def recordTrades(symbol):
 
             insert = True
             for b in range(len(tradesData)):
-                DBBinanceTs = tradesData[b][0]
-                DBOrderId = tradesData[b][1]
-                DBBinanceId = tradesData[b][2]
-                DBID = tradesData[b][3]
-                if int(DBBinanceId) == int(binanceId):
+                if int(tradesData[b].binance_id) == int(binanceId):
                     insert = False
                     break
 
             if insert:
-                insertSQLStr = "(%s,%s,%s,%s,%s,  %s,%s,%s,%s,%s,  %s,%s,%s,%s)"
-                sql = "INSERT INTO "+TRADES_TABLE_NAME+" ( `buyer`,`commission`,`binanceId`,`maker`,`orderId`, `price`,`qty`,`quoteQty`,`realizedPnl`,`side`, `positionSide`,`symbol`,`ts`,`myTs`)  VALUES "+insertSQLStr+";" 
-                FUNCTION_CLIENT.mysql_commit(sql,[buyer,commission,binanceId,maker,orderId,price,qty,quoteQty,realizedPnl,side,positionSide,symbol,binanceTs,now])
+                new_trades.append(Trade(
+                    buyer=bool(buyer),
+                    commission=commission,
+                    binance_id=binanceId,
+                    maker=bool(maker),
+                    order_id=orderId,
+                    price=price,
+                    qty=qty,
+                    quote_qty=quoteQty,
+                    realized_pnl=realizedPnl,
+                    side=side,
+                    position_side=positionSide,
+                    symbol=symbol,
+                    ts=binanceTs,
+                    my_ts=now,
+                ))
+        if new_trades:
+            with FUNCTION_CLIENT.get_session() as session:
+                session.add_all(new_trades)
+                session.commit()
 
 
 while 1:

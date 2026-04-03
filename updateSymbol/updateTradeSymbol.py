@@ -13,79 +13,99 @@ import datetime
 import string
 from settings import settings
 from infra_client import InfraClient
+from sqlmodel import select
+from sqlalchemy import delete
+from app.models.trade_symbol import TradeSymbol
+
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="updateTradeSymbol",connectMysql =True)
 
-sql = "truncate table trade_symbol" 
-FUNCTION_CLIENT.mysql_commit(sql,[])
+# Truncate trade_symbol
+with FUNCTION_CLIENT.get_session() as session:
+    session.exec(delete(TradeSymbol))
+    session.commit()
 
 url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
 response = requests.request("GET", url,timeout=(3,7)).json()
 symbolsArr = response["symbols"]
 
 #update symbol
+new_symbols = []
 for a in range(len(symbolsArr)):
     if  symbolsArr[a]["status"]=="TRADING" and symbolsArr[a]["deliveryDate"]==4133404800000 and symbolsArr[a]["underlyingType"]!="INDEX"  and symbolsArr[a]["quoteAsset"]=="USDT":
         thisSymbol = symbolsArr[a]["symbol"]
         thisBaseAsset = symbolsArr[a]["baseAsset"]
         thisQuote = thisSymbol.replace(thisBaseAsset,"")
-        sql = "INSERT INTO trade_symbol ( symbol,`coin`,`quote`,`status`,`onboardDate`,`index`,`defaultShow`,`onboardTs`,`linkSymbolArr`)  VALUES ( %s, %s,%s,%s, %s,%s,%s, %s,%s );" 
-        FUNCTION_CLIENT.mysql_commit(sql,[thisSymbol,thisBaseAsset,thisQuote,"yes",FUNCTION_CLIENT.turn_ts_to_time(int(symbolsArr[a]["onboardDate"]/1000)),0,0,int(symbolsArr[a]["onboardDate"]/1000),json.dumps([])])
+        new_symbols.append(TradeSymbol(
+            symbol=thisSymbol,
+            coin=thisBaseAsset,
+            quote=thisQuote,
+            status="yes",
+            onboard_date=str(FUNCTION_CLIENT.turn_ts_to_time(int(symbolsArr[a]["onboardDate"]/1000))),
+            index=0,
+            default_show=False,
+            onboard_ts=int(symbolsArr[a]["onboardDate"]/1000),
+            link_symbol_arr=[],
+        ))
+with FUNCTION_CLIENT.get_session() as session:
+    session.add_all(new_symbols)
+    session.commit()
 
 
 url = "https://fapi.binance.com/fapi/v1/ticker/24hr"
 response = requests.request("GET", url,timeout=(3,7)).json()
 oneDayVolArr = response
-for i in range(len(oneDayVolArr)):
-    symbol = oneDayVolArr[i]["symbol"]
-    sql = "update trade_symbol set `quoteVolume`=%s where symbol =%s" 
-    FUNCTION_CLIENT.mysql_commit(sql,[oneDayVolArr[i]["quoteVolume"],symbol])
+with FUNCTION_CLIENT.get_session() as session:
+    for i in range(len(oneDayVolArr)):
+        symbol = oneDayVolArr[i]["symbol"]
+        db_row = session.exec(select(TradeSymbol).where(TradeSymbol.symbol == symbol)).first()
+        if db_row:
+            db_row.quote_volume = oneDayVolArr[i]["quoteVolume"]
+            session.add(db_row)
+    session.commit()
 
 print("update index")
 #update index
-sql = "select `id` from trade_symbol where `status`='yes' order by id asc" 
-tradeSymbolData = FUNCTION_CLIENT.mysql_select(sql,[])
-for i in range(len(tradeSymbolData)):
-    sql = "update trade_symbol set `index`=%s where id =%s" 
-    FUNCTION_CLIENT.mysql_commit(sql,[i,tradeSymbolData[i][0]])
+with FUNCTION_CLIENT.get_session() as session:
+    tradeSymbolData = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
+    for i, row in enumerate(tradeSymbolData):
+        row.index = i
+        session.add(row)
+    session.commit()
 
 
 #update default show
-coinArr = []
-sql = "select `coin` from trade_symbol where `status`='yes' order by id asc" 
-tradeSymbolData = FUNCTION_CLIENT.mysql_select(sql,[])
-for a in range(len(tradeSymbolData)):
-    coinInCoinArr = False
-    for b in range(len(coinArr)):
-        if coinArr[b] == tradeSymbolData[a][0]:
-            coinInCoinArr = True
-    if not coinInCoinArr:
-        coinArr.append(tradeSymbolData[a][0])
+with FUNCTION_CLIENT.get_session() as session:
+    active_rows = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
+    coinArr = []
+    for row in active_rows:
+        if row.coin not in coinArr:
+            coinArr.append(row.coin)
 
-for a in range(len(coinArr)):
-    thisCoin = coinArr[a]
-    sql = "select `onboardTs`,`symbol`,`id`,`coin`,`index` from trade_symbol where coin=%s order by `quoteVolume` desc" 
-    tradeSymbolData = FUNCTION_CLIENT.mysql_select(sql,[thisCoin])
-    for b in range(len(tradeSymbolData)):
-        thisId = tradeSymbolData[b][2]
-        if b==0:
-            sql = "update trade_symbol set `defaultShow`=1 where `id`=%s " 
-            FUNCTION_CLIENT.mysql_commit(sql,[thisId])
-        else:
-            sql = "update trade_symbol set `defaultShow`=0 where `id`=%s " 
-            FUNCTION_CLIENT.mysql_commit(sql,[thisId])
+    for thisCoin in coinArr:
+        coin_rows = session.exec(
+            select(TradeSymbol).where(TradeSymbol.coin == thisCoin).order_by(TradeSymbol.quote_volume.desc())
+        ).all()
+        for b, row in enumerate(coin_rows):
+            row.default_show = (b == 0)
+            session.add(row)
+    session.commit()
 
 
 #update link symbol arr
-coinArr = []
-sql = "select `symbol`,`id`,`coin`,`index` from trade_symbol order by id asc" 
-tradeSymbolData = FUNCTION_CLIENT.mysql_select(sql,[])
-for a in range(len(tradeSymbolData)):
-    thisCoin = tradeSymbolData[a][2]
-    thisId = tradeSymbolData[a][1]
-    sql = "select `symbol` from trade_symbol where coin=%s" 
-    tradeSymbolDataB = FUNCTION_CLIENT.mysql_select(sql,[thisCoin])
-    linkSymbolArr = []
-    for b in range(len(tradeSymbolDataB)):
-        linkSymbolArr.append(tradeSymbolDataB[b][0])
-    sql = "update trade_symbol set `linkSymbolArr`=%s where `id`=%s " 
-    FUNCTION_CLIENT.mysql_commit(sql,[json.dumps(linkSymbolArr),thisId])
+with FUNCTION_CLIENT.get_session() as session:
+    all_rows = session.exec(
+        select(TradeSymbol).order_by(TradeSymbol.id.asc())
+    ).all()
+    for row in all_rows:
+        thisCoin = row.coin
+        link_rows = session.exec(
+            select(TradeSymbol).where(TradeSymbol.coin == thisCoin)
+        ).all()
+        linkSymbolArr = [r.symbol for r in link_rows]
+        row.link_symbol_arr = linkSymbolArr
+        session.add(row)
+    session.commit()

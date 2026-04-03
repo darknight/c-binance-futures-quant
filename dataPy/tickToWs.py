@@ -5,6 +5,8 @@ import json
 import requests
 from settings import settings
 from infra_client import InfraClient
+from sqlmodel import select
+from app.models.trade_symbol import TradeSymbol
 
 #2023.07.26 发现币安出现一个bug，导致tickbook有时候返还的排序会不一定，导致了之前设计的一部分问题，目前已经解决
 
@@ -15,15 +17,17 @@ privateIP = FUNCTION_CLIENT.get_private_ip()
 # 此处是通过阿里云命名带有 tickToWs 后，如tickToWs_1,tickToWs_2,调用api进行搜索，如非阿里云需自行替换相关api，或者直接手动写入所有tickToWs服务器的私有地址
 TICK_PRIVATE_IP_ARR = FUNCTION_CLIENT.get_aliyun_private_ip_arr_by_name("tickToWs")
 
-sql = "select `symbol`,`id` from trade_symbol where `status`='yes' order by id asc" 
-TRADE_SYMBOL_DATA = FUNCTION_CLIENT.mysql_select(sql,[])
+with FUNCTION_CLIENT.get_session() as session:
+    TRADE_SYMBOL_DATA = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
 
 TRADE_SYMBOL_ARR = []
-for i in range(len(TRADE_SYMBOL_DATA)):
+for row in TRADE_SYMBOL_DATA:
     TRADE_SYMBOL_ARR.append({
-            "symbol":TRADE_SYMBOL_DATA[i][0],
-            "id":TRADE_SYMBOL_DATA[i][1],
-            "binanceIndex":-1
+            "symbol": row.symbol,
+            "id": row.id,
+            "binanceIndex": -1
         })
 
 sendStr = "bbboiyfpdufiyuyu"+str(len(TRADE_SYMBOL_ARR))

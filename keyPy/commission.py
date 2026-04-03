@@ -15,6 +15,10 @@ from binance_f.base.printobject import *
 from binance_f.model.constant import *
 from settings import settings
 from infra_client import InfraClient
+from sqlmodel import select
+from sqlalchemy import delete
+from app.models.income import Income
+from app.models.income_history_take import IncomeHistoryTake
 
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="commission",connectMysql =True)
@@ -76,27 +80,28 @@ def record_commission():
     now = int(time.time()*1000)
     if now - UPDATE_TS>1000:
         UPDATE_TS = now
-        if now - INCOME_TABLE_DELETE_TS>3600000:
-            INCOME_TABLE_DELETE_TS = now
-            sql = "delete from "+TEMP_INCOME_TABLE_NAME+" where binance_ts<%s" 
-            FUNCTION_CLIENT.mysql_commit(sql,[now-86400000])
+        with FUNCTION_CLIENT.get_session() as session:
+            if now - INCOME_TABLE_DELETE_TS>3600000:
+                INCOME_TABLE_DELETE_TS = now
+                session.exec(delete(Income).where(Income.binance_ts < now - 86400000))
+                session.commit()
 
-
-        sql = "select `binance_ts`,`income`,`trade_id`,`symbol` from "+TEMP_INCOME_TABLE_NAME+"  order by id desc"
-        incomeData = FUNCTION_CLIENT.mysql_select(sql,[])
+            incomeRows = session.exec(
+                select(Income).order_by(Income.id.desc())
+            ).all()
         lasIncomeTs = 0
-        if len(incomeData)>0:
-            lasIncomeTs = incomeData[0][0]
+        if len(incomeRows)>0:
+            lasIncomeTs = incomeRows[0].binance_ts
 
         fourHoursProfitObj = {}
         oneDayProfitObj = {}
         allOneDayProfit = 0
         allFourHoursProfit= 0
-        for i in range(len(incomeData)):
-            symbol = incomeData[i][3]
-            profit = incomeData[i][1]
+        for row in incomeRows:
+            symbol = row.symbol
+            profit = float(row.income) if row.income is not None else 0
 
-            binanceTs = incomeData[i][0]
+            binanceTs = row.binance_ts
             allOneDayProfit = allOneDayProfit+profit
             if now - binanceTs<4*60*60*1000:
                 allFourHoursProfit = allFourHoursProfit+profit
@@ -134,12 +139,13 @@ def record_commission():
 
         FUNCTION_CLIENT.send_to_ws_a(sendStr)
 
-
-        sql = "select `binance_ts`,`incomeType`,`income`,`asset`,`trade_id` from "+INCOME_TABLE_NAME+"  order by id desc limit 2000"
-        lastBinanceTsData = FUNCTION_CLIENT.mysql_select(sql,[])
+        with FUNCTION_CLIENT.get_session() as session:
+            lastBinanceTsRows = session.exec(
+                select(IncomeHistoryTake).order_by(IncomeHistoryTake.id.desc()).limit(2000)
+            ).all()
         lastBinanceTs = 0
-        if len(lastBinanceTsData)>0:
-            lastBinanceTs = lastBinanceTsData[0][0]
+        if len(lastBinanceTsRows)>0:
+            lastBinanceTs = lastBinanceTsRows[0].binance_ts
 
         result = REQUEST_CLIENT.get_income_history_with_no_symbol()
         result = json.loads(result)
@@ -147,49 +153,72 @@ def record_commission():
         if "code" in result:
             FUNCTION_CLIENT.send_notify_limit_one_min(str(result))
         else:
+            new_income_rows = []
             for i in range(len(result)):
                 trade_id = str(result[i]['tradeId'])
-                binance_ts = str(result[i]['time'])
+                binance_ts = int(result[i]['time'])
                 incomeType = str(result[i]['incomeType'])
                 income = str(result[i]['income'])
                 asset = str(result[i]['asset'])
                 info = str(result[i]['info'])
-                my_ts = str(int(time.time()))
+                my_ts = int(time.time())
                 symbol = str(result[i]['symbol'])
                 if incomeType=="REALIZED_PNL":
                     isExit = False
-                    scanCount = len(incomeData)
+                    scanCount = len(incomeRows)
                     if scanCount>2000:
                         scanCount = 2000
                     for b in range(scanCount):
-                        if (str(int(incomeData[b][0]))==str(int(binance_ts))) and (format(float(incomeData[b][1]),'.8f') == format(float(income),'.8f')) and  (str(incomeData[b][2]) == str(trade_id)):
-                            isExit = True     
+                        if (str(int(incomeRows[b].binance_ts))==str(int(binance_ts))) and (format(float(incomeRows[b].income),'.8f') == format(float(income),'.8f')) and  (str(incomeRows[b].trade_id) == str(trade_id)):
+                            isExit = True
                     if not isExit:
-                        insertSQLStr = "('"+str(income)+"','"+trade_id+"','"+binance_ts+"','"+symbol+"')"
-                        sql = "INSERT INTO "+TEMP_INCOME_TABLE_NAME+" ( `income`,`trade_id`,`binance_ts`,`symbol`)  VALUES "+insertSQLStr+";" 
-                        FUNCTION_CLIENT.mysql_commit(sql,[])
+                        new_income_rows.append(Income(
+                            income=income,
+                            trade_id=trade_id,
+                            binance_ts=binance_ts,
+                            symbol=symbol,
+                        ))
+            if new_income_rows:
+                with FUNCTION_CLIENT.get_session() as session:
+                    session.add_all(new_income_rows)
+                    session.commit()
 
             bnbPrice = getBNBPrice()
 
+            new_history_rows = []
             for i in range(len(result)):
                 trade_id = str(result[i]['tradeId'])
-                binance_ts = str(result[i]['time'])
+                binance_ts = int(result[i]['time'])
                 incomeType = str(result[i]['incomeType'])
                 income = str(result[i]['income'])
                 asset = str(result[i]['asset'])
                 info = str(result[i]['info'])
-                my_ts = str(int(time.time()))
+                my_ts = int(time.time())
                 symbol = str(result[i]['symbol'])
 
                 isExit = False
 
-                for b in range(len(lastBinanceTsData)):
-                    if (str(int(lastBinanceTsData[b][0]))==str(int(binance_ts))) and (str(lastBinanceTsData[b][1]) == str(incomeType)) and (format(float(lastBinanceTsData[b][2]),'.8f') == format(float(income),'.8f')) and (str(lastBinanceTsData[b][3]) == str(asset)) and (str(lastBinanceTsData[b][4]) == str(trade_id)):
-                        isExit = True     
+                for b in range(len(lastBinanceTsRows)):
+                    if (str(int(lastBinanceTsRows[b].binance_ts))==str(int(binance_ts))) and (str(lastBinanceTsRows[b].income_type) == str(incomeType)) and (format(float(lastBinanceTsRows[b].income),'.8f') == format(float(income),'.8f')) and (str(lastBinanceTsRows[b].asset) == str(asset)) and (str(lastBinanceTsRows[b].trade_id) == str(trade_id)):
+                        isExit = True
                 if not isExit and result[i]['time']>1688256000000:
-                    insertSQLStr = "('"+str(incomeType)+"','"+str(income)+"','"+str(asset)+"','"+info+"','"+trade_id+"','"+binance_ts+"','"+my_ts+"','"+symbol+"','"+symbol+"','"+symbol+"','"+str(bnbPrice)+"')"
-                    sql = "INSERT INTO "+INCOME_TABLE_NAME+" ( `incomeType`,`income`,`asset`,`info`,`trade_id`,`binance_ts`,`my_ts`,`symbol`,`instrument_id`,`coin`,`bnbPrice`)  VALUES "+insertSQLStr+";" 
-                    FUNCTION_CLIENT.mysql_commit(sql,[])
+                    new_history_rows.append(IncomeHistoryTake(
+                        income_type=incomeType,
+                        income=income,
+                        asset=asset,
+                        info=info,
+                        trade_id=trade_id,
+                        binance_ts=binance_ts,
+                        my_ts=my_ts,
+                        symbol=symbol,
+                        instrument_id=symbol,
+                        coin=symbol,
+                        bnb_price=bnbPrice,
+                    ))
+            if new_history_rows:
+                with FUNCTION_CLIENT.get_session() as session:
+                    session.add_all(new_history_rows)
+                    session.commit()
 
 
 while 1:

@@ -6,27 +6,31 @@ import traceback
 import json
 from settings import settings
 from infra_client import InfraClient
+from sqlmodel import select
+from app.models.trade_symbol import TradeSymbol
 
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="oneMinKlineToWs",connectMysql =True)
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
 
-sql = "select `symbol`,`id`,`index` from trade_symbol where `status`='yes' order by id asc" 
-TRADE_SYMBOL_DATA = FUNCTION_CLIENT.mysql_select(sql,[])
+with FUNCTION_CLIENT.get_session() as session:
+    TRADE_SYMBOL_DATA = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
 
 TRADE_SYMBOL_ARR = []
-for i in range(len(TRADE_SYMBOL_DATA)):
-    symbolIndex = str(TRADE_SYMBOL_DATA[i][2])
+for row in TRADE_SYMBOL_DATA:
+    symbolIndex = str(row.index)
     if len(symbolIndex) ==2:
         symbolIndex = "0"+symbolIndex
     if len(symbolIndex) ==1:
         symbolIndex = "00"+symbolIndex
     TRADE_SYMBOL_ARR.append({
-            "symbol":TRADE_SYMBOL_DATA[i][0],
-            "id":TRADE_SYMBOL_DATA[i][1],
-            "price":"0",
-            "symbolIndex":symbolIndex
+            "symbol": row.symbol,
+            "id": row.id,
+            "price": "0",
+            "symbolIndex": symbolIndex
         })
 
 sendStr = "bbboiyfpdufiyuyu"+str(len(TRADE_SYMBOL_ARR))
