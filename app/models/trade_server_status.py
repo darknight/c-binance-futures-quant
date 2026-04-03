@@ -1,5 +1,6 @@
+from datetime import datetime
 from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import BigInteger, String, Text
+from sqlalchemy import BigInteger, DateTime, String, Text
 
 
 class TradeServerStatus(SQLModel, table=True):
@@ -13,4 +14,4 @@ class TradeServerStatus(SQLModel, table=True):
     my_symbol: str | None = Field(default=None, max_length=255)
     run_info: str | None = Field(default=None, sa_column=Column(Text))
     update_ts: int | None = Field(default=None, sa_column=Column(BigInteger))
-    update_time: str | None = Field(default=None, max_length=255)
+    update_time: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))

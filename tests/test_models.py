@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 from sqlmodel import SQLModel, Session, create_engine, select
 import pytest
@@ -113,7 +114,7 @@ def test_position_record_create(session):
         unrealized_profit=Decimal("100.50"),
         position_amt=Decimal("0.5"),
         ts=1704067200000,
-        time="2026-01-01 00:00:00",
+        time=datetime(2026, 1, 1, tzinfo=timezone.utc),
         position_value=Decimal("25000.00"),
         balance=Decimal("10000.00"),
     )
@@ -139,8 +140,8 @@ def test_income_create(session):
 def test_income_day_create(session):
     d = IncomeDay(
         api_key="key123",
-        day_begin_time="2026-01-01 00:00:00",
-        day_end_time="2026-01-02 00:00:00",
+        day_begin_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        day_end_time=datetime(2026, 1, 2, tzinfo=timezone.utc),
         binance_commission=Decimal("10.0"),
         pnl=Decimal("100.0"),
     )

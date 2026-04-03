@@ -1,6 +1,7 @@
+from datetime import datetime
 from decimal import Decimal
 from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import BigInteger, Numeric, String
+from sqlalchemy import BigInteger, DateTime, Numeric, String
 
 
 class PositionRecord(SQLModel, table=True):
@@ -11,7 +12,7 @@ class PositionRecord(SQLModel, table=True):
     unrealized_profit: Decimal | None = Field(default=None, sa_column=Column(Numeric(30, 10)))
     position_amt: Decimal | None = Field(default=None, sa_column=Column(Numeric(30, 10)))
     ts: int | None = Field(default=None, sa_column=Column(BigInteger))
-    time: str | None = Field(default=None, max_length=255)
+    time: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     position_value: Decimal | None = Field(default=None, sa_column=Column(Numeric(30, 10)))
     balance: Decimal | None = Field(default=None, sa_column=Column(Numeric(30, 10)))
     update_profit_and_commission: bool | None = Field(default=False)

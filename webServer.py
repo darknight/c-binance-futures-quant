@@ -4,6 +4,7 @@ import _thread
 import sys
 from bottle import run, get, post, request,response
 import json
+from datetime import datetime as _dt
 import random
 import time
 import requests
@@ -45,6 +46,15 @@ def load_user_config():
 def save_user_config(config):
     with open(USER_CONFIG_PATH, "w") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
+
+class UTCEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, _dt):
+            return obj.isoformat()
+        return super().default(obj)
+
+def json_dumps(obj):
+    return json.dumps(obj, cls=UTCEncoder)
 
 tableName = "trade_machine_status"
 
@@ -336,7 +346,7 @@ def getIncomeObj():
             LAST_UPDATE_INCOME_TS = now
             INCOME_LOCK= True
 
-            todayTime = str(datetime.date.today())+" 00:00:00"
+            todayTime = datetime.datetime.utcnow().strftime("%Y-%m-%d")+" 00:00:00"
             todayeTs  = FUNCTION_CLIENT.turn_ts_to_time(todayTime)
 
             todayeLimitTs = todayeTs*1000
@@ -1737,7 +1747,7 @@ def updateDayIncome():
         if lastIncomeDayTs==0:
             lastIncomeDayTs= initIncomeDayTs
         nowTs = int(time.time())
-        todayTs = nowTs-nowTs%86400-8*3600
+        todayTs = nowTs-nowTs%86400
 
         needInsertDay = int((todayTs - lastIncomeDayTs) /86400)
         print("todayTs:"+str(todayTs))
@@ -1782,7 +1792,7 @@ def get_day_income():
     global GET_DAY_INCOME_TS,DAY_INCOME_DATA,GET_DAY_INCOME_TODAY_TS,INCOME_OBJ
     incomeDayTableName = "income_day"
     now = int(time.time())
-    todayTime = str(datetime.date.today())+" 00:00:00"
+    todayTime = datetime.datetime.utcnow().strftime("%Y-%m-%d")+" 00:00:00"
     todayTs = FUNCTION_CLIENT.turn_ts_to_time(todayTime)
     isUpdate = 0
     print("------------a--------------")
@@ -1810,7 +1820,7 @@ def get_day_income():
         print(INCOME_OBJ)
         DAY_INCOME_DATA[len(DAY_INCOME_DATA)-1] = {'allNetProfit':0,'dayBeginTime':FUNCTION_CLIENT.turn_ts_to_time(todayTs),'dayEndTime':FUNCTION_CLIENT.turn_ts_to_time(todayTs+86400),'binanceCommission':INCOME_OBJ["today"]["c"],'netProfit':INCOME_OBJ["today"]["c"]+INCOME_OBJ["today"]["p"],'profit':INCOME_OBJ["today"]["p"],'zjyCommission':INCOME_OBJ["today"]["s"]}
 
-    resp = json.dumps({'s':'ok','d':DAY_INCOME_DATA,'u':isUpdate})
+    resp = json_dumps({'s':'ok','d':DAY_INCOME_DATA,'u':isUpdate})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
 
@@ -2281,7 +2291,7 @@ def get_watch_info():
 
         WATCH_INFO_OBJ ={'s':'ok','balance':accountBalanceValue,'ethP':ETH_TURN_PRICE,'btcP':BTC_TURN_PRICE,'ethT':ETH_TURN_TS,'btcT':BTC_TURN_TS,'eth':ETH_1M_KLINE_ARR,'btc':BTC_1M_KLINE_ARR,'e':LOSS_LIMIT_TIME_DATA_ARR,'d':TRADE_SERVER_STATUS_DATA,'a':allPositionArr,'t':int(time.time())}
 
-    resp = json.dumps(WATCH_INFO_OBJ)
+    resp = json_dumps(WATCH_INFO_OBJ)
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
 
@@ -2531,7 +2541,7 @@ def get_big_loss_trades():
                     "profit":bigLossData[i][2],
                     "profitPercentByBalance":str(abs(int(bigLossData[i][3]*100)/100))+"%"
                 })
-    resp = json.dumps({'s':'ok','d':BIG_LOSS_TRADES_ARR})
+    resp = json_dumps({'s':'ok','d':BIG_LOSS_TRADES_ARR})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
 

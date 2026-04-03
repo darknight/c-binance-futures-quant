@@ -1,6 +1,7 @@
+from datetime import datetime
 from decimal import Decimal
 from sqlmodel import SQLModel, Field, Column
-from sqlalchemy import BigInteger, Numeric, JSON, String
+from sqlalchemy import BigInteger, DateTime, Numeric, JSON, String
 
 
 class TradeSymbol(SQLModel, table=True):
@@ -20,4 +21,4 @@ class TradeSymbol(SQLModel, table=True):
     quote_volume_rank: int | None = Field(default=None)
     link_private_ip: str | None = Field(default="", max_length=255)
     machine_run_ts: int | None = Field(default=0, sa_column=Column(BigInteger))
-    machine_run_time: str | None = Field(default=None, max_length=255)
+    machine_run_time: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))

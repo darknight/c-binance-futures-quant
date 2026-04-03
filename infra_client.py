@@ -1,8 +1,10 @@
+import calendar
 import socket
 import json
 import requests
 import time
 import oss2
+from datetime import datetime as dt, timezone
 from websocket import create_connection
 from settings import settings
 from sqlmodel import create_engine
@@ -70,43 +72,40 @@ class InfraClient(object):
             self.send_notify(content)
 
     def turn_ts_to_time(self, initValue):
-        if isinstance(initValue, str):
-            timeArray = time.strptime(initValue, "%Y-%m-%d %H:%M:%S")
-            timestamp = time.mktime(timeArray)
-            return timestamp
+        if isinstance(initValue, dt):
+            return int(initValue.timestamp())
+        elif isinstance(initValue, str):
+            parsed = time.strptime(initValue, "%Y-%m-%d %H:%M:%S")
+            return calendar.timegm(parsed)
         else:
             if initValue > 99999999999:
                 initValue = int(initValue / 1000)
-            time_local = time.localtime(initValue)
-            dt = time.strftime("%Y-%m-%d %H:%M:00", time_local)
-            return dt
+            return dt.fromtimestamp(initValue, tz=timezone.utc)
 
     def turn_ts_to_day_time(self, initValue):
-        if isinstance(initValue, str):
-            timeArray = time.strptime(initValue, "%Y-%m-%d %H:%M:%S")
-            timestamp = time.mktime(timeArray)
-            return timestamp
+        if isinstance(initValue, dt):
+            return int(initValue.timestamp())
+        elif isinstance(initValue, str):
+            parsed = time.strptime(initValue, "%Y-%m-%d %H:%M:%S")
+            return calendar.timegm(parsed)
         else:
             if initValue > 99999999999:
                 initValue = int(initValue / 1000)
-            time_local = time.localtime(initValue)
-            dt = time.strftime("%Y-%m-%d 00:00:00", time_local)
-            return dt
+            utc_dt = dt.fromtimestamp(initValue, tz=timezone.utc)
+            return utc_dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
     def turn_ts_to_min(self, initValue):
         if initValue > 99999999999:
             initValue = int(initValue / 1000)
-        time_local = time.localtime(initValue)
-        dt = time.strftime("%M", time_local)
-        return dt
+        utc_time = time.gmtime(initValue)
+        return time.strftime("%M", utc_time)
 
     def generate_ts_with_min(self, min):
         now = int(time.time())
-        time_local = time.localtime(now)
-        dt = time.strftime("%Y-%m-%d %H:" + str(min) + ":00", time_local)
-        timeArray = time.strptime(dt, "%Y-%m-%d %H:%M:%S")
-        timestamp = int(time.mktime(timeArray))
-        return timestamp
+        utc_time = time.gmtime(now)
+        dt_str = time.strftime("%Y-%m-%d %H:" + str(min) + ":00", utc_time)
+        parsed = time.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+        return calendar.timegm(parsed)
 
     def mysql_select(self, sql, params):
         with self._engine.connect() as conn:
