@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from web_server.routers import config
+from web_server.routers import config, market
 
 
 @asynccontextmanager
@@ -20,6 +20,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(config.router)
+    app.include_router(market.router)
 
     @app.post("/health")
     def health():
