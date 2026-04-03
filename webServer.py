@@ -317,7 +317,6 @@ INCOME_LOCK = False
 @post('/get_income_obj', methods='POST')
 def getIncomeObj():
     global INCOME_OBJ,LAST_UPDATE_INCOME_TS,INCOME_LOCK,SYMBOL_INCOME_OBJ
-    accessToken = str(request.forms.get('accessToken'))
     now = int(time.time())
     if now - LAST_UPDATE_INCOME_TS>=9:
         if now - LAST_UPDATE_INCOME_TS>=60 or (not INCOME_LOCK):
@@ -333,7 +332,7 @@ def getIncomeObj():
             oneHourLimitTs = int(time.time()*1000)-3600000
             fourHoursLimitTs = int(time.time()*1000)-14400000
             oneDayLimitTs = int(time.time()*1000)-86400000
-            tableName = accessToken+"_income"
+            tableName = "income"
             limitTs = int(time.time()*1000)-86400000
             sql = "select `binance_ts`,`incomeType`,`income`,`asset`,`bnbPrice`,`commission`,`symbol` from "+tableName+" where binance_ts>%s order by id desc"
             data = FUNCTION_CLIENT.mysql_pool_select(sql,[limitTs])
@@ -428,7 +427,7 @@ for i in range(10):
     ASSETS_ARR.append([])
 
 
-def getBinanceAccountInfo(apiIndex,apiKey,autoBuyBnb,beginMinBnbMoney,buyBNBMoney,accessToken):
+def getBinanceAccountInfo(apiIndex,apiKey,autoBuyBnb,beginMinBnbMoney,buyBNBMoney):
     global ACCOUNT_INFO_UPDATE_TS,POSITION_ARR,ASSETS_ARR,BNB_PRICE
     now = int(time.time()*1000)
     buyBNBResult = False
@@ -476,7 +475,6 @@ def getBinanceAccountInfo(apiIndex,apiKey,autoBuyBnb,beginMinBnbMoney,buyBNBMone
 @post('/ping', methods='POST')
 def ping():
     global PRIVATE_IP_OBJ,API_OBJ,UPDATE_POSITION_TS
-    accessToken = str(request.forms.get('accessToken'))
     apiKey = str(request.forms.get('apiKey'))
     apiIndex = int(request.forms.get('apiIndex'))
     timestamp = int(request.forms.get('timestamp'))
@@ -490,7 +488,7 @@ def ping():
     updateAPIObj(apiKey)
     symbol = str(request.forms.get('symbol'))
     now = int(time.time()*1000)
-    binanceInfoArr = getBinanceAccountInfo(apiIndex,apiKey,autoBuyBnb,beginMinBnbMoney,buyBNBMoney,accessToken)
+    binanceInfoArr = getBinanceAccountInfo(apiIndex,apiKey,autoBuyBnb,beginMinBnbMoney,buyBNBMoney)
     resp = json.dumps({'s':'ok','p':binanceInfoArr[0],'t':binanceInfoArr[1],'r':binanceInfoArr[2],'n':now,'b':binanceInfoArr[3],"l":timestamp})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
@@ -651,7 +649,6 @@ LAST_BINANCE_RESPONSE_OBJ = {}
 def get_depth():
     global PRICE_DECIMAL_AMOUNT_OBJ,AMOUNT_DECIMAL_AMOUNT_OBJ,DEPTH_UPDATE_TS,LAST_BINANCE_RESPONSE_OBJ
     symbol = str(request.forms.get('symbol'))
-    accessToken = str(request.forms.get('accessToken'))
     now = int(time.time()*1000)
     if now - DEPTH_UPDATE_TS>100:
         DEPTH_UPDATE_TS = now
@@ -1717,49 +1714,10 @@ def r():
             RECORD_LOCK = True
             LAST_RECORD_TS= now
             apiKey = str(request.forms.get('apiKey'))
-            accessToken = str(request.forms.get('accessToken'))
             updateAPIObj(apiKey)
-            tableName = accessToken+"_income"
+            tableName = "income"
             sql = "select `binance_ts`,`incomeType`,`income`,`asset`,`trade_id` from "+tableName+" where apiKey=%s order by id desc limit 100"
-            lastBinanceTsData= ()
-
-            con = pool.get_connection()
-            c = con.cursor()
-            try:
-                c.execute(sql,[apiKey])
-                lastBinanceTsData = c.fetchall()
-                normal = True
-            except Exception as e:
-                print(e) 
-                print(e)
-                tableExit = False
-                sql ="show tables;"
-                tableData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
-                for a in range(len(tableData)):
-                    if tableData[a][0]==tableName:
-                        tableExit = True
-
-
-                if not tableExit:
-                    sql="""CREATE TABLE `"""+tableName+"""`  (
-                      `id` int(11) NOT NULL AUTO_INCREMENT,
-                      `incomeType` varchar(255) NULL,
-                      `income` double(30,10) NULL,
-                      `bnbPrice` double(30,10) NULL,
-                      `asset` varchar(255) NULL,
-                      `trade_id` varchar(255) NULL,
-                      `binance_ts` bigint(18) NULL,
-                      `symbol` varchar(255) NULL,
-                      `apiKey` varchar(255) NULL,
-                      `commission` double(30,10) NULL,
-                      PRIMARY KEY (`id`) USING BTREE
-                    );"""
-                    FUNCTION_CLIENT.mysql_pool_commit(sql,[])
-            try:
-                con.close()
-            except Exception as e:
-                print(q) 
-                print(e) 
+            lastBinanceTsData = FUNCTION_CLIENT.mysql_pool_select(sql,[apiKey])
 
 
 
@@ -1824,45 +1782,10 @@ def updateDayIncome():
     now = int(time.time())
     if now - UPDATE_DAY_INCOME_TS>30:
         UPDATE_DAY_INCOME_TS = now
-        accessToken = str(request.forms.get('accessToken'))
-        incomeDayTableName = accessToken+"_income_day"
-        incomeTableName = accessToken+"_income"
+        incomeDayTableName = "income_day"
+        incomeTableName = "income"
         sql = "select `dayBeginTime` from "+incomeDayTableName+" order by id desc limit 1"
-        lastBinanceTsData= ()
-
-        con = pool.get_connection()
-        c = con.cursor()
-        try:
-            c.execute(sql,[])
-            lastBinanceTsData = c.fetchall()
-            normal = True
-        except Exception as e:
-            print(e) 
-            print(e)
-            tableExit = False
-            sql ="show tables;"
-            tableData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
-            for a in range(len(tableData)):
-                if tableData[a][0]==incomeDayTableName:
-                    tableExit = True
-
-
-            if not tableExit:
-                sql="""CREATE TABLE `"""+incomeDayTableName+"""`  (
-                  `id` int(11) NOT NULL AUTO_INCREMENT,
-                  `dayBeginTime` varchar(255) NULL,
-                  `dayEndTime` varchar(255) NULL,
-                  `binanceCommission` double(30,10) NULL,
-                  `zjyCommission` double(30,10) NULL,
-                  `pnl` double(30,10) NULL,
-                  PRIMARY KEY (`id`) USING BTREE
-                );"""
-                FUNCTION_CLIENT.mysql_pool_commit(sql,[])
-        try:
-            con.close()
-        except Exception as e:
-            print(q) 
-            print(e) 
+        lastBinanceTsData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
 
 
         initIncomeDayTime = "2022-11-20 00:00:00"
@@ -1916,8 +1839,7 @@ DAY_INCOME_DATA = []
 @post('/get_day_income', methods='POST')
 def get_day_income():
     global GET_DAY_INCOME_TS,DAY_INCOME_DATA,GET_DAY_INCOME_TODAY_TS,INCOME_OBJ
-    accessToken = str(request.forms.get('accessToken'))
-    incomeDayTableName = accessToken+"_income_day"
+    incomeDayTableName = "income_day"
     now = int(time.time())
     todayTime = str(datetime.date.today())+" 00:00:00"
     todayTs = FUNCTION_CLIENT.turn_ts_to_time(todayTime)
@@ -2034,119 +1956,6 @@ def get_history_position_record():
     resp = json.dumps({'s':'ok','d':positionRecordObjArr})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
-
-# @post('/get_symbol_info', methods='POST')
-# def get_symbol_info():
-#     symbol = str(request.forms.get('symbol'))
-#     depthObj = getFutureDepthBySymbol(symbol,1000)
-#     midPrice = (depthObj["asks"][0]+depthObj["bids"][0])/2
-# @post('/begin_trade_record', methods='POST')
-# def begin_trade_record():
-#     apiKey = str(request.forms.get('apiKey'))
-#     symbol = str(request.forms.get('symbol'))
-#     ossId = str(request.forms.get('ossId'))
-#     ossKlineData =  json.loads(request.forms.get('ossKlineData'))
-#     updateAPIObj(apiKey)
-#     now = int(time.time())
-
-#     accessToken = str(request.forms.get('accessToken'))
-#     tradeRecordTableName = accessToken+"_trade_record"
-
-#     try:
-#         inputData= json.dumps({'s':'ok','d':ossKlineData},ensure_ascii=False)
-#         ossResult = OSS_BUCKET.put_object("tradeRecord/"+accessToken+"/"+ossId+".json", inputData)
-#     except Exception as e:
-#         try:
-#             inputData= json.dumps({'s':'ok','d':ossKlineData},ensure_ascii=False)
-#             ossResult = OSS_BUCKET.put_object("tradeRecord/"+accessToken+"/"+ossId+".json", inputData)
-#         except Exception as e:
-#             print(e)
-
-#     sql = "select `status` from "+tradeRecordTableName+" where symbol =%s order by id desc limit 1"
-#     lastTradeRecordData= ()
-
-#     con = pool.get_connection()
-#     c = con.cursor()
-#     try:
-#         c.execute(sql,[symbol])
-#         lastTradeRecordData = c.fetchall()
-#         normal = True
-#     except Exception as e:
-#         print(e) 
-#         print(e)
-#         tableExit = False
-#         sql ="show tables;"
-#         tableData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
-#         for a in range(len(tableData)):
-#             if tableData[a][0]==tradeRecordTableName:
-#                 tableExit = True
-
-
-#         if not tableExit:
-#             sql="""CREATE TABLE `"""+tradeRecordTableName+"""`  (
-#               `id` int(11) NOT NULL AUTO_INCREMENT,
-#               `beginTime` varchar(255) NULL,
-#               `endTime` varchar(255) NULL,
-#               `commission` double(30,10) NULL,
-#               `profit` double(30,10) NULL,
-#               `apiKey` varchar(255) NULL,
-#               `symbol` varchar(255) NULL,
-#               `ossId` varchar(255) NULL,
-#               `status` varchar(255) NULL,
-#               PRIMARY KEY (`id`) USING BTREE
-#             );"""
-#             FUNCTION_CLIENT.mysql_pool_commit(sql,[])
-#     try:
-#         con.close()
-#     except Exception as e:
-#         print(q) 
-#         print(e) 
-
-#     if not(len(lastTradeRecordData)>0 and lastTradeRecordData[0]=="begin"):
-#         sql = "INSERT INTO "+tradeRecordTableName+" (`beginTime`, `endTime`,`commission`,`profit`,`apiKey`,`symbol`,`ossId`,`status`)  VALUES (%s,%s,%s,%s,%s,%s,%s,%s);" 
-#         FUNCTION_CLIENT.mysql_pool_commit(sql,[FUNCTION_CLIENT.turn_ts_to_time(now),"",0,0,apiKey,symbol,ossId,"begin"])
-#         resp = json.dumps({'s':'ok'})
-#         response.set_header('Access-Control-Allow-Origin', '*')
-#         return resp
-
-#     else:
-#         resp = json.dumps({'s':'repeat'})
-#         response.set_header('Access-Control-Allow-Origin', '*')
-#         return resp
-
-
-# @post('/end_trade_record', methods='POST')
-# def end_trade_record():
-#     apiKey = str(request.forms.get('apiKey'))
-#     symbol = str(request.forms.get('symbol'))
-#     ossId = str(request.forms.get('ossId'))
-#     ossKlineData =  json.loads(request.forms.get('ossKlineData'))
-#     updateAPIObj(apiKey)
-#     now = int(time.time())
-
-#     accessToken = str(request.forms.get('accessToken'))
-#     tradeRecordTableName = accessToken+"_trade_record"
-
-#     try:
-#         inputData= json.dumps({'s':'ok','d':ossKlineData},ensure_ascii=False)
-#         ossResult = OSS_BUCKET.put_object("tradeRecord/"+accessToken+"/"+ossId+".json", inputData)
-#     except Exception as e:
-#         try:
-#             inputData= json.dumps({'s':'ok','d':ossKlineData},ensure_ascii=False)
-#             ossResult = OSS_BUCKET.put_object("tradeRecord/"+accessToken+"/"+ossId+".json", inputData)
-#         except Exception as e:
-#             print(e)
-
-
-#     sql = "select `status` from "+tradeRecordTableName+" where symbol =%s order by id desc limit 1"
-#     lastTradeRecordData= FUNCTION_CLIENT.mysql_pool_select(sql,[symbol])
-
-#     if len(lastTradeRecordData)==0:
-#         resp = json.dumps({'s':'no record'})
-#         response.set_header('Access-Control-Allow-Origin', '*')
-#         return resp
-#     sql = "update "+tradeRecordTableName+" set `endTime`=%s"
-#     FUNCTION_CLIENT.mysql_pool_commit(sql,[FUNCTION_CLIENT.turn_ts_to_time(now)])
 
 CUSTOMIZE_DANGEROUS_DATA_ARR = []
 CUSTOMIZE_DANGEROUS_DATA_ARR_UPDATE_TS = 0
