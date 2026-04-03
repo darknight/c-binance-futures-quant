@@ -570,3 +570,320 @@ def test_trade_machine_status_average_run_time(session):
     total = sum(r.run_time for r in rows)
     avg = int(total / len(rows))
     assert avg == 200
+
+
+# ---------------------------------------------------------------------------
+# Helpers for Income / IncomeDay
+# ---------------------------------------------------------------------------
+
+def _make_income(session, *, access_token="ak_test", income_type="COMMISSION",
+                 income_val="0.001", bnb_price="300.0", asset="BNB",
+                 trade_id="123", binance_ts=1700000000000, symbol="BTCUSDT",
+                 api_key="ak_test", commission="0.01") -> Income:
+    """Insert an Income row and return the refreshed object."""
+    from decimal import Decimal
+    row = Income(
+        access_token=access_token,
+        income_type=income_type,
+        income=Decimal(income_val),
+        bnb_price=Decimal(bnb_price),
+        asset=asset,
+        trade_id=trade_id,
+        binance_ts=binance_ts,
+        symbol=symbol,
+        api_key=api_key,
+        commission=Decimal(commission),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def _make_income_day(session, *, api_key="ak_test",
+                     day_begin_time=None, day_end_time=None,
+                     binance_commission="1.5", zjy_commission="0.3",
+                     pnl="10.0") -> IncomeDay:
+    """Insert an IncomeDay row and return the refreshed object."""
+    from decimal import Decimal
+    row = IncomeDay(
+        api_key=api_key,
+        day_begin_time=day_begin_time or datetime(2026, 1, 1, tzinfo=timezone.utc),
+        day_end_time=day_end_time or datetime(2026, 1, 2, tzinfo=timezone.utc),
+        binance_commission=Decimal(binance_commission),
+        zjy_commission=Decimal(zjy_commission),
+        pnl=Decimal(pnl),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+# ---------------------------------------------------------------------------
+# Income: SELECT WHERE binance_ts > X ORDER BY id DESC
+# ---------------------------------------------------------------------------
+
+def test_income_select_by_binance_ts_order_desc(session):
+    """SELECT Income WHERE binance_ts > threshold ORDER BY id DESC."""
+    _make_income(session, binance_ts=1000, symbol="BTCUSDT")
+    _make_income(session, binance_ts=2000, symbol="ETHUSDT")
+    _make_income(session, binance_ts=3000, symbol="SOLUSDT")
+
+    rows = session.exec(
+        select(Income).where(Income.binance_ts > 1500).order_by(Income.id.desc())
+    ).all()
+    assert len(rows) == 2
+    # DESC order: highest id first
+    assert rows[0].symbol == "SOLUSDT"
+    assert rows[1].symbol == "ETHUSDT"
+
+
+def test_income_select_by_binance_ts_empty(session):
+    """SELECT Income with threshold above all rows returns empty."""
+    _make_income(session, binance_ts=1000)
+
+    rows = session.exec(
+        select(Income).where(Income.binance_ts > 9999).order_by(Income.id.desc())
+    ).all()
+    assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Income: SELECT WHERE api_key = X ORDER BY id DESC LIMIT 100
+# ---------------------------------------------------------------------------
+
+def test_income_select_by_api_key_with_limit(session):
+    """SELECT Income WHERE api_key = X ORDER BY id DESC LIMIT 100."""
+    for i in range(5):
+        _make_income(session, api_key="key_a", binance_ts=1000 + i, symbol=f"SYM{i}")
+    _make_income(session, api_key="key_b", binance_ts=9000, symbol="OTHER")
+
+    rows = session.exec(
+        select(Income)
+        .where(Income.api_key == "key_a")
+        .order_by(Income.id.desc())
+        .limit(100)
+    ).all()
+    assert len(rows) == 5
+    assert all(r.api_key == "key_a" for r in rows)
+    # DESC: last inserted first
+    assert rows[0].symbol == "SYM4"
+
+
+def test_income_select_by_api_key_limit_caps_results(session):
+    """LIMIT actually caps the number of returned rows."""
+    for i in range(5):
+        _make_income(session, api_key="key_c", binance_ts=1000 + i, symbol=f"S{i}")
+
+    rows = session.exec(
+        select(Income)
+        .where(Income.api_key == "key_c")
+        .order_by(Income.id.desc())
+        .limit(3)
+    ).all()
+    assert len(rows) == 3
+
+
+# ---------------------------------------------------------------------------
+# Income: INSERT
+# ---------------------------------------------------------------------------
+
+def test_income_insert(session):
+    """INSERT a new Income record via session.add()."""
+    from decimal import Decimal
+    row = Income(
+        access_token="tok",
+        income_type="REALIZED_PNL",
+        income=Decimal("5.5"),
+        bnb_price=Decimal("310.0"),
+        asset="USDT",
+        trade_id="999",
+        binance_ts=1700000000000,
+        symbol="ETHUSDT",
+        api_key="ak1",
+        commission=Decimal("0.0"),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    assert row.id is not None
+    fetched = session.exec(select(Income).where(Income.id == row.id)).one()
+    assert fetched.income_type == "REALIZED_PNL"
+    assert fetched.income == Decimal("5.5")
+
+
+# ---------------------------------------------------------------------------
+# Income: SELECT WHERE binance_ts BETWEEN range (aggregation)
+# ---------------------------------------------------------------------------
+
+def test_income_select_binance_ts_range(session):
+    """SELECT Income WHERE binance_ts > begin AND binance_ts <= end."""
+    _make_income(session, binance_ts=1000, income_type="COMMISSION", income_val="0.5")
+    _make_income(session, binance_ts=2000, income_type="REALIZED_PNL", income_val="10.0")
+    _make_income(session, binance_ts=3000, income_type="COMMISSION", income_val="0.3")
+    _make_income(session, binance_ts=4000, income_type="REALIZED_PNL", income_val="20.0")
+
+    rows = session.exec(
+        select(Income)
+        .where(Income.binance_ts > 1500)
+        .where(Income.binance_ts <= 3500)
+    ).all()
+    assert len(rows) == 2
+    types = {r.income_type for r in rows}
+    assert types == {"REALIZED_PNL", "COMMISSION"}
+
+
+def test_income_aggregation_logic(session):
+    """Verify aggregation logic matching updateDayIncome pattern."""
+    from decimal import Decimal
+    _make_income(session, binance_ts=2000, income_type="COMMISSION",
+                 asset="BNB", income_val="0.01", bnb_price="300.0", commission="0.3")
+    _make_income(session, binance_ts=2500, income_type="COMMISSION",
+                 asset="USDT", income_val="1.5", bnb_price="0", commission="0.15")
+    _make_income(session, binance_ts=3000, income_type="REALIZED_PNL",
+                 asset="USDT", income_val="50.0", bnb_price="0", commission="0.0")
+
+    rows = session.exec(
+        select(Income).where(Income.binance_ts > 1000).where(Income.binance_ts <= 4000)
+    ).all()
+
+    day_binance_commission = 0
+    day_pnl = 0
+    day_zjy_commission = 0
+    for item in rows:
+        if item.income_type == "COMMISSION":
+            if item.asset == "BNB":
+                day_binance_commission += item.income * item.bnb_price
+            elif item.asset in ("USDT", "BUSD"):
+                day_binance_commission += item.income
+        elif item.income_type == "REALIZED_PNL":
+            if item.asset in ("USDT", "BUSD"):
+                day_pnl += item.income
+        day_zjy_commission += item.commission
+
+    assert day_binance_commission == Decimal("0.01") * Decimal("300.0") + Decimal("1.5")
+    assert day_pnl == Decimal("50.0")
+    assert day_zjy_commission == Decimal("0.3") + Decimal("0.15") + Decimal("0.0")
+
+
+# ---------------------------------------------------------------------------
+# IncomeDay: SELECT ORDER BY id DESC LIMIT 1 (latest)
+# ---------------------------------------------------------------------------
+
+def test_income_day_select_latest(session):
+    """SELECT IncomeDay ORDER BY id DESC LIMIT 1 returns the most recent row."""
+    _make_income_day(session, day_begin_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                     day_end_time=datetime(2026, 1, 2, tzinfo=timezone.utc))
+    _make_income_day(session, day_begin_time=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                     day_end_time=datetime(2026, 1, 3, tzinfo=timezone.utc))
+
+    latest = session.exec(
+        select(IncomeDay).order_by(IncomeDay.id.desc()).limit(1)
+    ).first()
+    assert latest is not None
+    # SQLite strips tzinfo
+    assert latest.day_begin_time == datetime(2026, 1, 2, tzinfo=timezone.utc).replace(tzinfo=None)
+
+
+def test_income_day_select_latest_empty(session):
+    """SELECT latest IncomeDay from empty table returns None."""
+    latest = session.exec(
+        select(IncomeDay).order_by(IncomeDay.id.desc()).limit(1)
+    ).first()
+    assert latest is None
+
+
+# ---------------------------------------------------------------------------
+# IncomeDay: SELECT ORDER BY id ASC (all, chronological)
+# ---------------------------------------------------------------------------
+
+def test_income_day_select_all_asc(session):
+    """SELECT IncomeDay ORDER BY id ASC returns rows in chronological order."""
+    _make_income_day(session, day_begin_time=datetime(2026, 1, 3, tzinfo=timezone.utc),
+                     day_end_time=datetime(2026, 1, 4, tzinfo=timezone.utc), pnl="30.0")
+    _make_income_day(session, day_begin_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                     day_end_time=datetime(2026, 1, 2, tzinfo=timezone.utc), pnl="10.0")
+
+    rows = session.exec(
+        select(IncomeDay).order_by(IncomeDay.id.asc())
+    ).all()
+    assert len(rows) == 2
+    # ASC by id: first inserted comes first
+    assert rows[0].day_begin_time == datetime(2026, 1, 3, tzinfo=timezone.utc).replace(tzinfo=None)
+    assert rows[1].day_begin_time == datetime(2026, 1, 1, tzinfo=timezone.utc).replace(tzinfo=None)
+
+
+# ---------------------------------------------------------------------------
+# IncomeDay: INSERT
+# ---------------------------------------------------------------------------
+
+def test_income_day_insert(session):
+    """INSERT a new IncomeDay record via session.add()."""
+    from decimal import Decimal
+    row = IncomeDay(
+        api_key="ak_day",
+        day_begin_time=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        day_end_time=datetime(2026, 2, 2, tzinfo=timezone.utc),
+        binance_commission=Decimal("2.0"),
+        zjy_commission=Decimal("0.5"),
+        pnl=Decimal("15.0"),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    assert row.id is not None
+    fetched = session.exec(select(IncomeDay).where(IncomeDay.id == row.id)).one()
+    assert fetched.pnl == Decimal("15.0")
+
+
+# ---------------------------------------------------------------------------
+# IncomeDay: UPDATE by day_end_time
+# ---------------------------------------------------------------------------
+
+def test_income_day_update_by_day_end_time(session):
+    """UPDATE IncomeDay fields by matching day_end_time."""
+    from decimal import Decimal
+    _make_income_day(session, day_begin_time=datetime(2026, 3, 1, tzinfo=timezone.utc),
+                     day_end_time=datetime(2026, 3, 2, tzinfo=timezone.utc),
+                     binance_commission="1.0", pnl="5.0", zjy_commission="0.2")
+
+    target_end = datetime(2026, 3, 2, tzinfo=timezone.utc).replace(tzinfo=None)
+    db_row = session.exec(
+        select(IncomeDay).where(IncomeDay.day_end_time == target_end)
+    ).one()
+    db_row.binance_commission = Decimal("2.0")
+    db_row.pnl = Decimal("12.0")
+    db_row.zjy_commission = Decimal("0.6")
+    session.add(db_row)
+    session.commit()
+    session.refresh(db_row)
+
+    assert db_row.binance_commission == Decimal("2.0")
+    assert db_row.pnl == Decimal("12.0")
+    assert db_row.zjy_commission == Decimal("0.6")
+
+
+def test_income_day_update_does_not_affect_other_rows(session):
+    """Updating one IncomeDay row leaves other rows untouched."""
+    from decimal import Decimal
+    _make_income_day(session, day_begin_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                     day_end_time=datetime(2026, 4, 2, tzinfo=timezone.utc), pnl="10.0")
+    _make_income_day(session, day_begin_time=datetime(2026, 4, 2, tzinfo=timezone.utc),
+                     day_end_time=datetime(2026, 4, 3, tzinfo=timezone.utc), pnl="20.0")
+
+    target_end = datetime(2026, 4, 2, tzinfo=timezone.utc).replace(tzinfo=None)
+    db_row = session.exec(
+        select(IncomeDay).where(IncomeDay.day_end_time == target_end)
+    ).one()
+    db_row.pnl = Decimal("99.0")
+    session.add(db_row)
+    session.commit()
+
+    other_end = datetime(2026, 4, 3, tzinfo=timezone.utc).replace(tzinfo=None)
+    other = session.exec(
+        select(IncomeDay).where(IncomeDay.day_end_time == other_end)
+    ).one()
+    assert other.pnl == Decimal("20.0")

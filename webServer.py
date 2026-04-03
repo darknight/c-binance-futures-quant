@@ -34,6 +34,8 @@ from infra_client import InfraClient
 from sqlmodel import select
 from app.models.trade_server_status import TradeServerStatus
 from app.models.machine_status import MachineStatus, TradeMachineStatus
+from app.models.income import Income
+from app.models.income_day import IncomeDay
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="webServer",connectMysqlPool=True)
 
@@ -301,10 +303,11 @@ def getIncomeObj():
             oneHourLimitTs = int(time.time()*1000)-3600000
             fourHoursLimitTs = int(time.time()*1000)-14400000
             oneDayLimitTs = int(time.time()*1000)-86400000
-            tableName = "income"
             limitTs = int(time.time()*1000)-86400000
-            sql = "select `binance_ts`,`incomeType`,`income`,`asset`,`bnbPrice`,`commission`,`symbol` from "+tableName+" where binance_ts>%s order by id desc"
-            data = FUNCTION_CLIENT.mysql_pool_select(sql,[limitTs])
+            with FUNCTION_CLIENT.get_session() as session:
+                data = session.exec(
+                    select(Income).where(Income.binance_ts > limitTs).order_by(Income.id.desc())
+                ).all()
             print("len(data):"+str(len(data)))
             if len(data)>0:
                 INCOME_OBJ = {
@@ -317,11 +320,11 @@ def getIncomeObj():
                 }
 
             symbolIncomeObj = {}
-            for i in range(len(data)):
-                symbol = data[i][6]
-                binanceTs = data[i][0]
-                value = data[i][2]
-                commission = data[i][5]
+            for row in data:
+                symbol = row.symbol
+                binanceTs = row.binance_ts
+                value = row.income
+                commission = row.commission
                 if not (symbol in symbolIncomeObj):
                     symbolIncomeObj[symbol] = {
                     "15m":{"p":0,"c":0},
@@ -332,10 +335,10 @@ def getIncomeObj():
                     "today":{"p":0,"c":0}
                 }
 
-                if  data[i][3]=="BNB":
-                    value = data[i][2]*data[i][4]
+                if  row.asset=="BNB":
+                    value = row.income*row.bnb_price
 
-                if data[i][1]=="COMMISSION":
+                if row.income_type=="COMMISSION":
                     if binanceTs>=fifteenMinsLimitTs:
                         INCOME_OBJ["15m"]["c"] = INCOME_OBJ["15m"]["c"]+value
                         INCOME_OBJ["15m"]["s"] = INCOME_OBJ["15m"]["s"]+commission
@@ -360,7 +363,7 @@ def getIncomeObj():
                         INCOME_OBJ["today"]["c"] = INCOME_OBJ["today"]["c"]+value
                         INCOME_OBJ["today"]["s"] = INCOME_OBJ["today"]["s"]+commission
                         symbolIncomeObj[symbol]["today"]["c"] = symbolIncomeObj[symbol]["today"]["c"]+value
-                if data[i][1]=="REALIZED_PNL":
+                if row.income_type=="REALIZED_PNL":
                     if binanceTs>=fifteenMinsLimitTs:
                         INCOME_OBJ["15m"]["p"] = INCOME_OBJ["15m"]["p"]+value
                         symbolIncomeObj[symbol]["15m"]["p"] = symbolIncomeObj[symbol]["15m"]["p"]+value
@@ -1612,15 +1615,17 @@ def r():
             LAST_RECORD_TS= now
             apiKey = str(request.forms.get('apiKey'))
             updateAPIObj(apiKey)
-            tableName = "income"
-            sql = "select `binance_ts`,`incomeType`,`income`,`asset`,`trade_id` from "+tableName+" where apiKey=%s order by id desc limit 100"
-            lastBinanceTsData = FUNCTION_CLIENT.mysql_pool_select(sql,[apiKey])
-
-
+            with FUNCTION_CLIENT.get_session() as session:
+                lastBinanceTsData = session.exec(
+                    select(Income)
+                    .where(Income.api_key == apiKey)
+                    .order_by(Income.id.desc())
+                    .limit(100)
+                ).all()
 
             lastBinanceTs = 0
             if len(lastBinanceTsData)>0:
-                lastBinanceTs = lastBinanceTsData[0][0]
+                lastBinanceTs = lastBinanceTsData[0].binance_ts
 
             result= []
             try:
@@ -1647,8 +1652,8 @@ def r():
                 if incomeType=="COMMISSION" or incomeType=="REALIZED_PNL":
                     isExit = False
                     for b in range(len(lastBinanceTsData)):
-                        if int(result[i]['time'])<lastBinanceTs or ((str(int(lastBinanceTsData[b][0]))==str(int(binance_ts))) and (str(lastBinanceTsData[b][1]) == str(incomeType)) and (format(float(lastBinanceTsData[b][2]),'.8f') == format(float(income),'.8f')) and (str(lastBinanceTsData[b][3]) == str(asset)) and (str(lastBinanceTsData[b][4]) == str(trade_id))):
-                            isExit = True     
+                        if int(result[i]['time'])<lastBinanceTs or ((str(int(lastBinanceTsData[b].binance_ts))==str(int(binance_ts))) and (str(lastBinanceTsData[b].income_type) == str(incomeType)) and (format(float(lastBinanceTsData[b].income),'.8f') == format(float(income),'.8f')) and (str(lastBinanceTsData[b].asset) == str(asset)) and (str(lastBinanceTsData[b].trade_id) == str(trade_id))):
+                            isExit = True
                     if not isExit:
                         commission = 0
                         if incomeType=="COMMISSION":
@@ -1663,9 +1668,21 @@ def r():
                                 else:
                                     commission = abs(float(income)*0.05)
 
-                        insertSQLStr = "('"+str(apiKey)+"','"+str(incomeType)+"','"+str(income)+"','"+str(asset)+"','"+trade_id+"','"+binance_ts+"','"+symbol+"','"+str(bnbPrice)+"','"+str(commission)+"')"
-                        sql = "INSERT INTO "+tableName+" (`apiKey`, `incomeType`,`income`,`asset`,`trade_id`,`binance_ts`,`symbol`,`bnbPrice`,`commission`)  VALUES "+insertSQLStr+";" 
-                        FUNCTION_CLIENT.mysql_pool_commit(sql,[])
+                        with FUNCTION_CLIENT.get_session() as session:
+                            new_income = Income(
+                                access_token=str(apiKey),
+                                api_key=str(apiKey),
+                                income_type=str(incomeType),
+                                income=decimal.Decimal(str(income)),
+                                asset=str(asset),
+                                trade_id=trade_id,
+                                binance_ts=int(binance_ts),
+                                symbol=symbol,
+                                bnb_price=decimal.Decimal(str(bnbPrice)),
+                                commission=decimal.Decimal(str(commission)),
+                            )
+                            session.add(new_income)
+                            session.commit()
             RECORD_LOCK = False
     resp = json.dumps({'s':'ok'})
     response.set_header('Access-Control-Allow-Origin', '*')
@@ -1679,17 +1696,17 @@ def updateDayIncome():
     now = int(time.time())
     if now - UPDATE_DAY_INCOME_TS>30:
         UPDATE_DAY_INCOME_TS = now
-        incomeDayTableName = "income_day"
-        incomeTableName = "income"
-        sql = "select `dayBeginTime` from "+incomeDayTableName+" order by id desc limit 1"
-        lastBinanceTsData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
 
+        with FUNCTION_CLIENT.get_session() as session:
+            latestDay = session.exec(
+                select(IncomeDay).order_by(IncomeDay.id.desc()).limit(1)
+            ).first()
 
         initIncomeDayTime = "2022-11-20 00:00:00"
         initIncomeDayTs = FUNCTION_CLIENT.turn_ts_to_time(initIncomeDayTime)
         lastIncomeDayTs = 0
-        if len(lastBinanceTsData)>0:
-            lastIncomeDayTs = FUNCTION_CLIENT.turn_ts_to_time(lastBinanceTsData[0][0]) 
+        if latestDay is not None:
+            lastIncomeDayTs = FUNCTION_CLIENT.turn_ts_to_time(latestDay.day_begin_time)
         if lastIncomeDayTs==0:
             lastIncomeDayTs= initIncomeDayTs
         nowTs = int(time.time())
@@ -1701,33 +1718,50 @@ def updateDayIncome():
         for i in range(needInsertDay):
             endDayTs = lastIncomeDayTs+86400*(i+1)
             beginDayTs = lastIncomeDayTs+86400*i
-            sql = "select `incomeType`,`income`,`asset`,`bnbPrice`,`commission` from "+incomeTableName+" where binance_ts>%s and binance_ts<=%s"
-            incomeData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginDayTs*1000,endDayTs*1000])
+            with FUNCTION_CLIENT.get_session() as session:
+                incomeData = session.exec(
+                    select(Income)
+                    .where(Income.binance_ts > beginDayTs*1000)
+                    .where(Income.binance_ts <= endDayTs*1000)
+                ).all()
             dayBinanceCommission = 0
             dayZjyCommission = 0
             dayPnl = 0
-            for incomeDataIndex in range(len(incomeData)):
-                if incomeData[incomeDataIndex][0]=="COMMISSION":
-                    if incomeData[incomeDataIndex][2]=="BNB":
-                        dayBinanceCommission = dayBinanceCommission+incomeData[incomeDataIndex][1]*incomeData[incomeDataIndex][3]
-                    elif incomeData[incomeDataIndex][2]=="USDT" or incomeData[incomeDataIndex][2]=="BUSD":
-                        dayBinanceCommission = dayBinanceCommission+incomeData[incomeDataIndex][1]
-                elif incomeData[incomeDataIndex][0]=="REALIZED_PNL":
-                    if incomeData[incomeDataIndex][2]=="BNB":
-                        dayPnl = dayPnl+incomeData[incomeDataIndex][1]*incomeData[incomeDataIndex][3]
-                    elif incomeData[incomeDataIndex][2]=="USDT" or incomeData[incomeDataIndex][2]=="BUSD":
-                        dayPnl = dayPnl+incomeData[incomeDataIndex][1]
-                dayZjyCommission = dayZjyCommission+incomeData[incomeDataIndex][4]
+            for item in incomeData:
+                if item.income_type=="COMMISSION":
+                    if item.asset=="BNB":
+                        dayBinanceCommission = dayBinanceCommission+item.income*item.bnb_price
+                    elif item.asset=="USDT" or item.asset=="BUSD":
+                        dayBinanceCommission = dayBinanceCommission+item.income
+                elif item.income_type=="REALIZED_PNL":
+                    if item.asset=="BNB":
+                        dayPnl = dayPnl+item.income*item.bnb_price
+                    elif item.asset=="USDT" or item.asset=="BUSD":
+                        dayPnl = dayPnl+item.income
+                dayZjyCommission = dayZjyCommission+item.commission
 
             print(FUNCTION_CLIENT.turn_ts_to_time(beginDayTs))
-            sql = "select `id` from "+incomeDayTableName+" where dayBeginTime=%s"
-            incomeData = FUNCTION_CLIENT.mysql_pool_select(sql,[FUNCTION_CLIENT.turn_ts_to_time(beginDayTs)])
-            if len(incomeData)==0:
-                sql = "INSERT INTO "+incomeDayTableName+" (`dayBeginTime`, `dayEndTime`,`binanceCommission`,`pnl`,`zjyCommission`)  VALUES (%s,%s,%s,%s,%s);" 
-                FUNCTION_CLIENT.mysql_pool_commit(sql,[FUNCTION_CLIENT.turn_ts_to_time(beginDayTs),FUNCTION_CLIENT.turn_ts_to_time(endDayTs),dayBinanceCommission,dayPnl,dayZjyCommission])
-            else:
-                sql = "update "+incomeDayTableName+" set `zjyCommission`=%s,`pnl`=%s,`zjyCommission`=%s where `dayEndTime`=%s " 
-                FUNCTION_CLIENT.mysql_pool_commit(sql,[dayBinanceCommission,dayPnl,dayZjyCommission,FUNCTION_CLIENT.turn_ts_to_time(endDayTs)])
+            with FUNCTION_CLIENT.get_session() as session:
+                existingDay = session.exec(
+                    select(IncomeDay).where(IncomeDay.day_begin_time == FUNCTION_CLIENT.turn_ts_to_time(beginDayTs))
+                ).first()
+                if existingDay is None:
+                    newDay = IncomeDay(
+                        api_key="",
+                        day_begin_time=FUNCTION_CLIENT.turn_ts_to_time(beginDayTs),
+                        day_end_time=FUNCTION_CLIENT.turn_ts_to_time(endDayTs),
+                        binance_commission=dayBinanceCommission,
+                        pnl=dayPnl,
+                        zjy_commission=dayZjyCommission,
+                    )
+                    session.add(newDay)
+                    session.commit()
+                else:
+                    existingDay.binance_commission = dayBinanceCommission
+                    existingDay.pnl = dayPnl
+                    existingDay.zjy_commission = dayZjyCommission
+                    session.add(existingDay)
+                    session.commit()
 
 
 GET_DAY_INCOME_TS = 0
@@ -1736,7 +1770,6 @@ DAY_INCOME_DATA = []
 @post('/get_day_income', methods='POST')
 def get_day_income():
     global GET_DAY_INCOME_TS,DAY_INCOME_DATA,GET_DAY_INCOME_TODAY_TS,INCOME_OBJ
-    incomeDayTableName = "income_day"
     now = int(time.time())
     todayTime = datetime.datetime.utcnow().strftime("%Y-%m-%d")+" 00:00:00"
     todayTs = FUNCTION_CLIENT.turn_ts_to_time(todayTime)
@@ -1749,16 +1782,15 @@ def get_day_income():
         isUpdate = 1
         GET_DAY_INCOME_TODAY_TS = todayTs
         GET_DAY_INCOME_TS= now
-        sql = "select `dayBeginTime`, `dayEndTime`,`binanceCommission`,`pnl`,`zjyCommission` from "+incomeDayTableName+" order by id asc"
-        dayIncomeData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+        with FUNCTION_CLIENT.get_session() as session:
+            dayIncomeData = session.exec(
+                select(IncomeDay).order_by(IncomeDay.id.asc())
+            ).all()
         DAY_INCOME_DATA = []
         allNetProfit = 0
-        for i in range(len(dayIncomeData)):
-            if FUNCTION_CLIENT.turn_ts_to_time(dayIncomeData[i][0]) !=todayTs:
-                DAY_INCOME_DATA.append({'allNetProfit':0,'dayBeginTime':dayIncomeData[i][0],'dayEndTime':dayIncomeData[i][1],'binanceCommission':dayIncomeData[i][2],'netProfit':dayIncomeData[i][3]+dayIncomeData[i][2],'profit':dayIncomeData[i][3],'zjyCommission':dayIncomeData[i][4]})
-        # if FUNCTION_CLIENT.turn_ts_to_time(dayIncomeData[len(dayIncomeData)-1][0]) !=todayTs:
-
-        #     DAY_INCOME_DATA.append({'allNetProfit':0,'dayBeginTime':FUNCTION_CLIENT.turn_ts_to_time(todayTs),'dayEndTime':FUNCTION_CLIENT.turn_ts_to_time(todayTs+86400),'binanceCommission':INCOME_OBJ["today"]["c"],'netProfit':INCOME_OBJ["today"]["c"]+INCOME_OBJ["today"]["p"],'profit':INCOME_OBJ["today"]["p"],'zjyCommission':INCOME_OBJ["today"]["s"]})
+        for item in dayIncomeData:
+            if FUNCTION_CLIENT.turn_ts_to_time(item.day_begin_time) !=todayTs:
+                DAY_INCOME_DATA.append({'allNetProfit':0,'dayBeginTime':item.day_begin_time,'dayEndTime':item.day_end_time,'binanceCommission':item.binance_commission,'netProfit':item.pnl+item.binance_commission,'profit':item.pnl,'zjyCommission':item.zjy_commission})
 
     if FUNCTION_CLIENT.turn_ts_to_time(DAY_INCOME_DATA[len(DAY_INCOME_DATA)-1]["dayBeginTime"]) !=todayTs:
         DAY_INCOME_DATA.append({'allNetProfit':0,'dayBeginTime':FUNCTION_CLIENT.turn_ts_to_time(todayTs),'dayEndTime':FUNCTION_CLIENT.turn_ts_to_time(todayTs+86400),'binanceCommission':INCOME_OBJ["today"]["c"],'netProfit':INCOME_OBJ["today"]["c"]+INCOME_OBJ["today"]["p"],'profit':INCOME_OBJ["today"]["p"],'zjyCommission':INCOME_OBJ["today"]["s"]})
