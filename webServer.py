@@ -1840,26 +1840,18 @@ def get_one_min_select_kline():
     return resp
 
 
-POSITION_RECORD_TABLE_NAME_OBJ = {
-        "ALL":"position_record_all",
-        "ETHUSDT":"position_record_a",
-        "BTCUSDT":"position_record_b",
-
-        # "ETHBUSD":"position_record_c",
-
-        "ETHUSDT_2":"position_record_d",
-        "BTCUSDT_2":"position_record_e",
-    }
-
 @post('/get_position_record', methods='POST')
 def get_position_record():
-    global POSITION_RECORD_TABLE_NAME_OBJ
     symbol = str(request.forms.get('symbol'))
     beginTs = int(request.forms.get('beginTs'))
     endTs = int(request.forms.get('endTs'))
 
-    sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission`,`entryPrice`,`unrealizedProfit`,`maintMargin` from "+POSITION_RECORD_TABLE_NAME_OBJ[symbol]+" where ts>%s and ts<%s"
-    positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs])
+    if symbol == "ALL":
+        sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission`,`entryPrice`,`unrealizedProfit`,`maintMargin` from position_record where ts>%s and ts<%s"
+        positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs])
+    else:
+        sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission`,`entryPrice`,`unrealizedProfit`,`maintMargin` from position_record where ts>%s and ts<%s and symbol=%s"
+        positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs,symbol])
     positionRecordObjArr = []
     for i in range(len(positionRecordData)):
         positionRecordObjArr.append({
@@ -1883,13 +1875,17 @@ def get_position_record():
 
 @post('/get_history_position_record', methods='POST')
 def get_history_position_record():
-    global POSITION_RECORD_TABLE_NAME_OBJ
-    tableName = str(request.forms.get('tableName'))
+    symbol = str(request.forms.get('tableName'))
     beginTs = int(request.forms.get('beginTs'))
     endTs = int(request.forms.get('endTs'))
 
-    sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission` from history_position_record_"+tableName+" where ts>%s and ts<%s"
-    positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs])
+    # Consolidated: history records now live in position_record (no production data)
+    if symbol == "ALL" or symbol == "":
+        sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission` from position_record where ts>%s and ts<%s"
+        positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs])
+    else:
+        sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission` from position_record where ts>%s and ts<%s and symbol=%s"
+        positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs,symbol])
     positionRecordObjArr = []
     for i in range(len(positionRecordData)):
         positionRecordObjArr.append({
@@ -2083,14 +2079,14 @@ def get_trade_record():
 
 @post('/get_all_acount_info', methods='POST')
 def get_all_acount_info():
-    global POSITION_RECORD_TABLE_NAME_OBJ
     allBalance = 0
     allPosition = 0
-    for key in POSITION_RECORD_TABLE_NAME_OBJ:
-        sql = "select `positionValue`,`balance` from "+POSITION_RECORD_TABLE_NAME_OBJ[key]+" order by id desc limit 1"
-        positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
-        allPosition = allPosition+positionRecordData[0][0]
-        allBalance = allBalance+positionRecordData[0][1]
+    # Sum latest positionValue and balance per symbol from the consolidated table
+    sql = "select `symbol`,`positionValue`,`balance` from position_record where id in (select max(id) from position_record group by symbol)"
+    positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+    for row in positionRecordData:
+        allPosition = allPosition+row[1]
+        allBalance = allBalance+row[2]
     resp = json.dumps({'s':'ok','b':allBalance,'p':allPosition,'t':int(time.time())})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
@@ -2197,31 +2193,31 @@ def updateTurnPrice():
     for key in NEW_API_OBJ:
         if now - TURN_PRICE_UPDATE_TS>60:
             TURN_PRICE_UPDATE_TS = now
-            sql = "select `positionAmt` from position_record_a order by id desc limit 1"
-            positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+            sql = "select `positionAmt` from position_record where symbol=%s order by id desc limit 1"
+            positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["ETHUSDT"])
             positionAmt = positionRecordData[0][0]
             if positionAmt>0:
-                sql = "select `price`,`ts` from position_record_a where positionAmt<0 order by id desc limit 1"
-                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+                sql = "select `price`,`ts` from position_record where symbol=%s and positionAmt<0 order by id desc limit 1"
+                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["ETHUSDT"])
                 ETH_TURN_PRICE = lastTurnPositionRecordData[0][0]
                 ETH_TURN_TS = lastTurnPositionRecordData[0][1]
             if positionAmt<=0:
-                sql = "select `price`,`ts` from position_record_a where positionAmt>0 order by id desc limit 1"
-                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+                sql = "select `price`,`ts` from position_record where symbol=%s and positionAmt>0 order by id desc limit 1"
+                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["ETHUSDT"])
                 ETH_TURN_PRICE = lastTurnPositionRecordData[0][0]
                 ETH_TURN_TS = lastTurnPositionRecordData[0][1]
 
-            sql = "select `positionAmt` from position_record_b order by id desc limit 1"
-            positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+            sql = "select `positionAmt` from position_record where symbol=%s order by id desc limit 1"
+            positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["BTCUSDT"])
             positionAmt = positionRecordData[0][0]
             if positionAmt>0:
-                sql = "select `price`,`ts` from position_record_b where positionAmt<0 order by id desc limit 1"
-                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+                sql = "select `price`,`ts` from position_record where symbol=%s and positionAmt<0 order by id desc limit 1"
+                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["BTCUSDT"])
                 BTC_TURN_PRICE = lastTurnPositionRecordData[0][0]
                 BTC_TURN_TS = lastTurnPositionRecordData[0][1]
             if positionAmt<=0:
-                sql = "select `price`,`ts` from position_record_b where positionAmt>0 order by id desc limit 1"
-                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+                sql = "select `price`,`ts` from position_record where symbol=%s and positionAmt>0 order by id desc limit 1"
+                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["BTCUSDT"])
                 BTC_TURN_PRICE = lastTurnPositionRecordData[0][0]
                 BTC_TURN_TS = lastTurnPositionRecordData[0][1]
 
