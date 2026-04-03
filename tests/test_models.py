@@ -15,6 +15,10 @@ from app.models.commission import Commission
 from app.models.machine_status import MachineStatus, TradeMachineStatus
 from app.models.trade_server_status import TradeServerStatus
 from app.models.loss_limit_time import LossLimitTime
+from app.models.trades_take import TradesTake
+from app.models.income_history_take import IncomeHistoryTake
+from app.models.income_history_take_day import IncomeHistoryTakeDay
+from app.models.commission_temp_income import CommissionTempIncome
 
 
 @pytest.fixture
@@ -202,3 +206,60 @@ def test_loss_limit_time_create(session):
     session.add(llt)
     session.commit()
     assert llt.id is not None
+
+
+def test_trades_take_create(session):
+    tt = TradesTake(
+        symbol="BTCUSDT",
+        direction="longs",
+        status="tradeEnd",
+        begin_ts=1704067200000,
+        end_ts=1704153600000,
+        profit=Decimal("50.00"),
+        balance=Decimal("10000.00"),
+        commission=Decimal("-0.50"),
+    )
+    session.add(tt)
+    session.commit()
+    assert tt.id is not None
+
+
+def test_income_history_take_create(session):
+    iht = IncomeHistoryTake(
+        income_type="REALIZED_PNL",
+        income=Decimal("25.50"),
+        asset="USDT",
+        symbol="ETHUSDT",
+        binance_ts=1704067200000,
+        api_key="key123",
+    )
+    session.add(iht)
+    session.commit()
+    assert iht.id is not None
+
+
+def test_income_history_take_day_create(session):
+    ihtd = IncomeHistoryTakeDay(
+        day_begin_time="2026-01-01 00:00:00",
+        day_end_time="2026-01-01 23:59:59",
+        commission=Decimal("-1.20"),
+        profit=Decimal("80.00"),
+    )
+    session.add(ihtd)
+    session.commit()
+    assert ihtd.id is not None
+
+
+def test_commission_temp_income_create(session):
+    cti = CommissionTempIncome(
+        income_type="COMMISSION",
+        income=Decimal("-0.30"),
+        asset="BNB",
+        symbol="BTCUSDT",
+        binance_ts=1704067200000,
+        api_key="key456",
+        coin="BNB",
+    )
+    session.add(cti)
+    session.commit()
+    assert cti.id is not None

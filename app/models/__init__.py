@@ -9,3 +9,7 @@ from app.models.commission import Commission
 from app.models.machine_status import MachineStatus, TradeMachineStatus
 from app.models.trade_server_status import TradeServerStatus
 from app.models.loss_limit_time import LossLimitTime
+from app.models.trades_take import TradesTake
+from app.models.income_history_take import IncomeHistoryTake
+from app.models.income_history_take_day import IncomeHistoryTakeDay
+from app.models.commission_temp_income import CommissionTempIncome
