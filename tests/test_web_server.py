@@ -163,3 +163,62 @@ def test_end_open_unknown_symbol():
     resp = client.post("/end_open", data={"symbol": "UNKNOWN"})
     assert resp.status_code == 200
     assert resp.json() == {"s": "ok"}
+
+
+def test_all_routes_registered():
+    """Verify all expected routes are registered on the app."""
+    app = _create_test_app()
+    routes = [route.path for route in app.routes if hasattr(route, "path")]
+    expected_endpoints = [
+        "/health",
+        "/get_config",
+        "/get_symbol_index",
+        "/modify_hot_key",
+        "/get_state_config",
+        "/modify_state_config",
+        "/get_depth",
+        "/get_one_min_select_kline",
+        "/change_leverage",
+        "/cancel_orders",
+        "/cancel_order",
+        "/get_all_open_orders",
+        "/cancel_binance_orders",
+        "/cancel_binance_order",
+        "/get_commission_rate",
+        "/open_position",
+        "/close_position",
+        "/stop_loss_batch",
+        "/stop_loss_once",
+        "/stop_profit_batch",
+        "/stop_profit_once",
+        "/take_open",
+        "/end_open",
+        "/get_income_obj",
+        "/r",
+        "/get_day_income",
+        "/get_invest_percent",
+        "/get_position_record",
+        "/get_history_position_record",
+        "/get_big_loss_trades",
+        "/begin_trade_record",
+        "/get_order_result_arr",
+        "/get_trades_result_arr",
+        "/ping",
+        "/check_maker_server_in_data",
+        "/update_maker_server_run_info",
+        "/get_customize_dangerous",
+        "/update_customize_dangerous",
+        "/update_machine_status",
+        "/update_trade_status",
+        "/get_trade_status",
+        "/get_all_acount_info",
+        "/get_all_open_orders_b",
+        "/get_position",
+        "/get_trade_record",
+        "/get_second_open_position",
+        "/update_loss_limit_time",
+        "/get_watch_info",
+        "/get_one_day_rate",
+    ]
+    for ep in expected_endpoints:
+        assert ep in routes, f"Missing route: {ep}"
