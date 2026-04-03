@@ -36,6 +36,13 @@ from app.models.trade_server_status import TradeServerStatus
 from app.models.machine_status import MachineStatus, TradeMachineStatus
 from app.models.income import Income
 from app.models.income_day import IncomeDay
+from app.models.loss_limit_time import LossLimitTime
+from app.models.position_record import PositionRecord
+from app.models.trade_symbol import TradeSymbol
+from app.models.trades_take import TradesTake
+from app.models.trade_record import TradeRecord
+from app.models.trades import Trades
+from app.models.begin_trade_record import BeginTradeRecord
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="webServer",connectMysqlPool=True)
 
@@ -467,19 +474,22 @@ def ping():
 
 @post('/get_symbol_index', methods='POST')
 def getSymbolIndex():
-    sql = "select `symbol`,`id`,`coin`,`index`,`quote`,`linkSymbolArr`,`defaultShow` from trade_symbol where `status`='yes' order by id asc" 
-    tradeSymbolData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+    with FUNCTION_CLIENT.get_session() as session:
+        rows = session.exec(
+            select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+        ).all()
 
     tradeSymbolArr = []
-    for i in range(len(tradeSymbolData)):
+    for i in range(len(rows)):
         symbolIndex = i
+        link_data = rows[i].link_symbol_arr if isinstance(rows[i].link_symbol_arr, (list, dict)) else json.loads(rows[i].link_symbol_arr or "[]")
         tradeSymbolArr.append({
-                "symbol":tradeSymbolData[i][0],
-                "coin":tradeSymbolData[i][2],
-                "symbolIndex":tradeSymbolData[i][3],
-                "quote":tradeSymbolData[i][4],
-                "linkSymbolArr":json.loads(tradeSymbolData[i][5]),
-                "defaultShow":tradeSymbolData[i][6],
+                "symbol":rows[i].symbol,
+                "coin":rows[i].coin,
+                "symbolIndex":rows[i].index,
+                "quote":rows[i].quote,
+                "linkSymbolArr":link_data,
+                "defaultShow":rows[i].default_show,
                 "weight":0
             })
 
@@ -1824,26 +1834,25 @@ def get_position_record():
     beginTs = int(request.forms.get('beginTs'))
     endTs = int(request.forms.get('endTs'))
 
-    if symbol == "ALL":
-        sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission`,`entryPrice`,`unrealizedProfit`,`maintMargin` from position_record where ts>%s and ts<%s"
-        positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs])
-    else:
-        sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission`,`entryPrice`,`unrealizedProfit`,`maintMargin` from position_record where ts>%s and ts<%s and symbol=%s"
-        positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs,symbol])
+    with FUNCTION_CLIENT.get_session() as session:
+        stmt = select(PositionRecord).where(PositionRecord.ts > beginTs, PositionRecord.ts < endTs)
+        if symbol != "ALL":
+            stmt = stmt.where(PositionRecord.symbol == symbol)
+        positionRecordData = session.exec(stmt).all()
     positionRecordObjArr = []
-    for i in range(len(positionRecordData)):
+    for row in positionRecordData:
         positionRecordObjArr.append({
-                "positionAmt":positionRecordData[i][0],
-                "price":positionRecordData[i][1],
-                "positionValue":positionRecordData[i][2],
-                "balance":positionRecordData[i][3],
-                "time":positionRecordData[i][4],
-                "profit":positionRecordData[i][5],
-                "commission":positionRecordData[i][6],
-                "makerCommission":positionRecordData[i][7],
-                "entryPrice":positionRecordData[i][8],
-                "unrealizedProfit":positionRecordData[i][9],
-                "maintMargin":positionRecordData[i][10]
+                "positionAmt":row.position_amt,
+                "price":None,
+                "positionValue":row.position_value,
+                "balance":row.balance,
+                "time":row.time,
+                "profit":row.profit,
+                "commission":row.commission,
+                "makerCommission":row.maker_commission,
+                "entryPrice":None,
+                "unrealizedProfit":row.unrealized_profit,
+                "maintMargin":None
             })
 
 
@@ -1858,23 +1867,22 @@ def get_history_position_record():
     endTs = int(request.forms.get('endTs'))
 
     # Consolidated: history records now live in position_record (no production data)
-    if symbol == "ALL" or symbol == "":
-        sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission` from position_record where ts>%s and ts<%s"
-        positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs])
-    else:
-        sql = "select `positionAmt`,`price`,`positionValue`,`balance`,`time`,`profit`,`commission`,`makerCommission` from position_record where ts>%s and ts<%s and symbol=%s"
-        positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[beginTs,endTs,symbol])
+    with FUNCTION_CLIENT.get_session() as session:
+        stmt = select(PositionRecord).where(PositionRecord.ts > beginTs, PositionRecord.ts < endTs)
+        if symbol != "ALL" and symbol != "":
+            stmt = stmt.where(PositionRecord.symbol == symbol)
+        positionRecordData = session.exec(stmt).all()
     positionRecordObjArr = []
-    for i in range(len(positionRecordData)):
+    for row in positionRecordData:
         positionRecordObjArr.append({
-                "positionAmt":positionRecordData[i][0],
-                "price":positionRecordData[i][1],
-                "positionValue":positionRecordData[i][2],
-                "balance":positionRecordData[i][3],
-                "time":positionRecordData[i][4],
-                "profit":positionRecordData[i][5],
-                "commission":positionRecordData[i][6],
-                "makerCommission":positionRecordData[i][7]
+                "positionAmt":row.position_amt,
+                "price":None,
+                "positionValue":row.position_value,
+                "balance":row.balance,
+                "time":row.time,
+                "profit":row.profit,
+                "commission":row.commission,
+                "makerCommission":row.maker_commission
             })
 
 
@@ -2077,11 +2085,15 @@ def get_all_acount_info():
     allBalance = 0
     allPosition = 0
     # Sum latest positionValue and balance per symbol from the consolidated table
-    sql = "select `symbol`,`positionValue`,`balance` from position_record where id in (select max(id) from position_record group by symbol)"
-    positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+    from sqlalchemy import func
+    with FUNCTION_CLIENT.get_session() as session:
+        subq = select(func.max(PositionRecord.id)).group_by(PositionRecord.symbol).scalar_subquery()
+        positionRecordData = session.exec(
+            select(PositionRecord).where(PositionRecord.id.in_(subq))
+        ).all()
     for row in positionRecordData:
-        allPosition = allPosition+row[1]
-        allBalance = allBalance+row[2]
+        allPosition = allPosition + (row.position_value or 0)
+        allBalance = allBalance + (row.balance or 0)
     resp = json.dumps({'s':'ok','b':allBalance,'p':allPosition,'t':int(time.time())})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
@@ -2092,14 +2104,14 @@ def getLossLimitTimeData(forceUpdate):
     global GET_LOSS_LIMIT_TIME_DATA_TS,LOSS_LIMIT_TIME_DATA_ARR
     now = int(time.time())
     if (now - GET_LOSS_LIMIT_TIME_DATA_TS>60) or forceUpdate:
-        GET_LOSS_LIMIT_TIME_DATA_TS = now 
-        sql = "select `symbol`,`limitTime` from loss_limit_time"
-        lossLimitTimeData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+        GET_LOSS_LIMIT_TIME_DATA_TS = now
+        with FUNCTION_CLIENT.get_session() as session:
+            lossLimitTimeData = session.exec(select(LossLimitTime)).all()
         LOSS_LIMIT_TIME_DATA_ARR = []
-        for i in range(len(lossLimitTimeData)):
+        for row in lossLimitTimeData:
             LOSS_LIMIT_TIME_DATA_ARR.append({
-                    "symbol":lossLimitTimeData[i][0],
-                    "limitTime":lossLimitTimeData[i][1]
+                    "symbol":row.symbol,
+                    "limitTime":row.limit_time
                 })
 
 ETH_1M_KLINE_ARR = []
@@ -2188,33 +2200,46 @@ def updateTurnPrice():
     for key in NEW_API_OBJ:
         if now - TURN_PRICE_UPDATE_TS>60:
             TURN_PRICE_UPDATE_TS = now
-            sql = "select `positionAmt` from position_record where symbol=%s order by id desc limit 1"
-            positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["ETHUSDT"])
-            positionAmt = positionRecordData[0][0]
-            if positionAmt>0:
-                sql = "select `price`,`ts` from position_record where symbol=%s and positionAmt<0 order by id desc limit 1"
-                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["ETHUSDT"])
-                ETH_TURN_PRICE = lastTurnPositionRecordData[0][0]
-                ETH_TURN_TS = lastTurnPositionRecordData[0][1]
-            if positionAmt<=0:
-                sql = "select `price`,`ts` from position_record where symbol=%s and positionAmt>0 order by id desc limit 1"
-                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["ETHUSDT"])
-                ETH_TURN_PRICE = lastTurnPositionRecordData[0][0]
-                ETH_TURN_TS = lastTurnPositionRecordData[0][1]
+            with FUNCTION_CLIENT.get_session() as session:
+                ethLatest = session.exec(
+                    select(PositionRecord).where(PositionRecord.symbol == "ETHUSDT").order_by(PositionRecord.id.desc()).limit(1)
+                ).first()
+                if ethLatest:
+                    positionAmt = ethLatest.position_amt or 0
+                    if positionAmt > 0:
+                        lastTurn = session.exec(
+                            select(PositionRecord).where(PositionRecord.symbol == "ETHUSDT", PositionRecord.position_amt < 0).order_by(PositionRecord.id.desc()).limit(1)
+                        ).first()
+                        if lastTurn:
+                            ETH_TURN_PRICE = 0
+                            ETH_TURN_TS = lastTurn.ts
+                    if positionAmt <= 0:
+                        lastTurn = session.exec(
+                            select(PositionRecord).where(PositionRecord.symbol == "ETHUSDT", PositionRecord.position_amt > 0).order_by(PositionRecord.id.desc()).limit(1)
+                        ).first()
+                        if lastTurn:
+                            ETH_TURN_PRICE = 0
+                            ETH_TURN_TS = lastTurn.ts
 
-            sql = "select `positionAmt` from position_record where symbol=%s order by id desc limit 1"
-            positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["BTCUSDT"])
-            positionAmt = positionRecordData[0][0]
-            if positionAmt>0:
-                sql = "select `price`,`ts` from position_record where symbol=%s and positionAmt<0 order by id desc limit 1"
-                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["BTCUSDT"])
-                BTC_TURN_PRICE = lastTurnPositionRecordData[0][0]
-                BTC_TURN_TS = lastTurnPositionRecordData[0][1]
-            if positionAmt<=0:
-                sql = "select `price`,`ts` from position_record where symbol=%s and positionAmt>0 order by id desc limit 1"
-                lastTurnPositionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,["BTCUSDT"])
-                BTC_TURN_PRICE = lastTurnPositionRecordData[0][0]
-                BTC_TURN_TS = lastTurnPositionRecordData[0][1]
+                btcLatest = session.exec(
+                    select(PositionRecord).where(PositionRecord.symbol == "BTCUSDT").order_by(PositionRecord.id.desc()).limit(1)
+                ).first()
+                if btcLatest:
+                    positionAmt = btcLatest.position_amt or 0
+                    if positionAmt > 0:
+                        lastTurn = session.exec(
+                            select(PositionRecord).where(PositionRecord.symbol == "BTCUSDT", PositionRecord.position_amt < 0).order_by(PositionRecord.id.desc()).limit(1)
+                        ).first()
+                        if lastTurn:
+                            BTC_TURN_PRICE = 0
+                            BTC_TURN_TS = lastTurn.ts
+                    if positionAmt <= 0:
+                        lastTurn = session.exec(
+                            select(PositionRecord).where(PositionRecord.symbol == "BTCUSDT", PositionRecord.position_amt > 0).order_by(PositionRecord.id.desc()).limit(1)
+                        ).first()
+                        if lastTurn:
+                            BTC_TURN_PRICE = 0
+                            BTC_TURN_TS = lastTurn.ts
 
 
 WATCH_INFO_UPDATE_TS = 0
@@ -2231,13 +2256,14 @@ def get_watch_info():
         updateTurnPrice()
         for key in NEW_API_OBJ:
             dayBeginBalaneUpdateTime = FUNCTION_CLIENT.turn_ts_to_day_time(now)
-            positionTableName = NEW_API_OBJ[key]["positionTableName"]
             if dayBeginBalaneUpdateTime!=NEW_API_OBJ[key]["dayBeginBalaneUpdateTime"]:
-                sql = "select `balance` from "+positionTableName+" where ts>=%s order by id asc limit 1"
                 zeroPoint = FUNCTION_CLIENT.turn_ts_to_time(dayBeginBalaneUpdateTime)
-                positionRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[zeroPoint])
-                if len(positionRecordData)>0:
-                    NEW_API_OBJ[key]["dayBeginBalane"] = positionRecordData[0][0]
+                with FUNCTION_CLIENT.get_session() as session:
+                    firstRow = session.exec(
+                        select(PositionRecord).where(PositionRecord.ts >= zeroPoint).order_by(PositionRecord.id.asc()).limit(1)
+                    ).first()
+                if firstRow:
+                    NEW_API_OBJ[key]["dayBeginBalane"] = firstRow.balance
                     NEW_API_OBJ[key]["dayBeginBalaneUpdateTime"] = dayBeginBalaneUpdateTime
 
             thisIP = NEW_API_OBJ[key]["positionIP"]
@@ -2253,8 +2279,9 @@ def get_watch_info():
                     thisLossLimitTime = LOSS_LIMIT_TIME_DATA_ARR[i]["limitTime"]
                     break
             if thisLossLimitTime=="":
-                sql = "INSERT INTO loss_limit_time ( symbol,`limitTime`)  VALUES ( %s, %s);" 
-                FUNCTION_CLIENT.mysql_pool_commit(sql,[symbol,"2023-03-28 01:00:00"])
+                with FUNCTION_CLIENT.get_session() as session:
+                    session.add(LossLimitTime(symbol=symbol, limit_time="2023-03-28 01:00:00"))
+                    session.commit()
                 getLossLimitTimeData(True)
 
             url = "http://"+thisIP+"/"+thisKey[0:10]+".json"
@@ -2294,8 +2321,13 @@ def get_watch_info():
 def update_loss_limit_time():
     symbol = str(request.forms.get('symbol'))
     nowTime = FUNCTION_CLIENT.turn_ts_to_time(int(time.time()))
-    sql = "update loss_limit_time set `limitTime`=%s where symbol=%s" 
-    FUNCTION_CLIENT.mysql_pool_commit(sql,[nowTime,symbol])
+    nowTimeStr = str(nowTime) if not isinstance(nowTime, str) else nowTime
+    with FUNCTION_CLIENT.get_session() as session:
+        row = session.exec(select(LossLimitTime).where(LossLimitTime.symbol == symbol)).first()
+        if row:
+            row.limit_time = nowTimeStr
+            session.add(row)
+            session.commit()
     getLossLimitTimeData(True)
     resp = json.dumps({'s':'ok','t':int(time.time())})
     response.set_header('Access-Control-Allow-Origin', '*')
@@ -2540,15 +2572,17 @@ def get_big_loss_trades():
     now = int(time.time())
     if now - UPDATE_BIG_LOSS_TRADES_DARA_TS>60:
         UPDATE_BIG_LOSS_TRADES_DARA_TS = now
-        sql = "select `symbol`,`endTs`,`profit`,`profitPercentByBalance` from trades_record where profitPercentByBalance<=-0.15 order by id desc"
-        bigLossData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+        with FUNCTION_CLIENT.get_session() as session:
+            bigLossData = session.exec(
+                select(TradeRecord).where(TradeRecord.profit_percent_by_balance <= -0.15).order_by(TradeRecord.id.desc())
+            ).all()
         BIG_LOSS_TRADES_ARR = []
-        for i in range(len(bigLossData)):
+        for row in bigLossData:
             BIG_LOSS_TRADES_ARR.append({
-                    "symbol":bigLossData[i][0],
-                    "time":FUNCTION_CLIENT.turn_ts_to_time(bigLossData[i][1]),
-                    "profit":bigLossData[i][2],
-                    "profitPercentByBalance":str(abs(int(bigLossData[i][3]*100)/100))+"%"
+                    "symbol":row.symbol,
+                    "time":FUNCTION_CLIENT.turn_ts_to_time(row.end_ts),
+                    "profit":row.profit,
+                    "profitPercentByBalance":str(abs(int(row.profit_percent_by_balance*100)/100))+"%"
                 })
     resp = json_dumps({'s':'ok','d':BIG_LOSS_TRADES_ARR})
     response.set_header('Access-Control-Allow-Origin', '*')
@@ -2578,13 +2612,28 @@ def begin_trade_record():
         clientEndPrice = float(request.forms.get('clientEndPrice'))
         privateIP =  str(request.forms.get('privateIP'))
 
-        sql = "select `id` from trades_take where symbol=%s and status='tradeBegin'"
-        tradesData = FUNCTION_CLIENT.mysql_pool_select(sql,[symbol])
+        with FUNCTION_CLIENT.get_session() as session:
+            tradesData = session.exec(
+                select(TradesTake).where(TradesTake.symbol == symbol, TradesTake.status == "tradeBegin")
+            ).all()
         if myTradeType.find("open")>=0 and len(tradesData)==0:
             if not symbol in SYMBOL_LAST_INSEART_TS_OBJ or ts-SYMBOL_LAST_INSEART_TS_OBJ[symbol]>30000:
                 SYMBOL_LAST_INSEART_TS_OBJ[symbol] = ts
-                sql = "INSERT INTO trades_take (  `status`, `version`,`volMultiple`,`standardRate`,`symbol`,`klineArr`,  `nowOpenRate`,`beginMachineNumber`,`direction`,`longsConditionA`,  `shortsConditionA`,`shortsConditionB`,`btcNowOpenRate`,`ethNowOpenRate`,`beginTs`,  `endTs`,`tradeType`,`updateTs`,`clientBeginPrice`,`clientEndPrice`)  VALUES ( %s,%s, %s, %s,%s,  %s,%s, %s, %s,%s,  %s,%s, %s, %s,%s,  %s,%s, %s, %s, %s);" 
-                FUNCTION_CLIENT.mysql_pool_commit(sql,['tradeBegin', 3,volMultiple,standardRate,symbol,klineArr,  nowOpenRate,machineNumber,direction,longsConditionA,  shortsConditionA,shortsConditionB,btcNowOpenRate,ethNowOpenRate,ts,  ts,myTradeType,ts,clientBeginPrice,clientEndPrice])
+                from decimal import Decimal
+                with FUNCTION_CLIENT.get_session() as session:
+                    new_row = TradesTake(
+                        status="tradeBegin", version=3,
+                        vol_multiple=Decimal(str(volMultiple)), standard_rate=Decimal(str(standardRate)),
+                        symbol=symbol, kline_arr=klineArr,
+                        now_open_rate=Decimal(str(nowOpenRate)), begin_machine_number=machineNumber,
+                        direction=direction, longs_condition_a=longsConditionA,
+                        shorts_condition_a=shortsConditionA, shorts_condition_b=shortsConditionB,
+                        btc_now_open_rate=Decimal(str(btcNowOpenRate)), eth_now_open_rate=Decimal(str(ethNowOpenRate)),
+                        begin_ts=ts, end_ts=ts, trade_type=myTradeType, update_ts=ts,
+                        client_begin_price=Decimal(str(clientBeginPrice)), client_end_price=Decimal(str(clientEndPrice))
+                    )
+                    session.add(new_row)
+                    session.commit()
         else:
             FUNCTION_CLIENT.send_notify_limit_one_min(myTradeType)
         #     if len(tradesData)==0:
@@ -2626,22 +2675,27 @@ def get_order_result_arr():
     symbol = str(request.forms.get('symbol'))
     beginTs = int(request.forms.get('beginTs'))
     endTs = int(request.forms.get('endTs'))
-    sql = "select `symbol`,`time`,`asksDepthArr`,`bidsDepthArr`,`ordersResult`,direction,nowOpenRate,machineNumber,`ts`,myTradeType,nowPrice from begin_trade_record where symbol=%s and ts>%s and ts<%s order by id desc limit 5000"
-    beginTradeRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[symbol,beginTs-60000,endTs+60000])
+    with FUNCTION_CLIENT.get_session() as session:
+        beginTradeRecordData = session.exec(
+            select(BeginTradeRecord)
+            .where(BeginTradeRecord.symbol == symbol, BeginTradeRecord.ts > beginTs - 60000, BeginTradeRecord.ts < endTs + 60000)
+            .order_by(BeginTradeRecord.id.desc())
+            .limit(5000)
+        ).all()
     beginTradeArr = []
-    for i in range(len(beginTradeRecordData)):
+    for row in beginTradeRecordData:
         beginTradeArr.append({
-                "symbol":beginTradeRecordData[i][0],
-                "time":beginTradeRecordData[i][1],
-                "asksDepthArr":json.loads(beginTradeRecordData[i][2]),
-                "bidsDepthArr":json.loads(beginTradeRecordData[i][3]),
-                "ordersResult":json.loads(beginTradeRecordData[i][4]),
-                "direction":beginTradeRecordData[i][5],
-                "nowOpenRate":beginTradeRecordData[i][6],
-                "machineNumber":beginTradeRecordData[i][7],
-                "ts":beginTradeRecordData[i][8],
-                "myTradeType":beginTradeRecordData[i][9],
-                "nowPrice":beginTradeRecordData[i][10]
+                "symbol":row.symbol,
+                "time":row.time,
+                "asksDepthArr":json.loads(row.asks_depth_arr or "[]"),
+                "bidsDepthArr":json.loads(row.bids_depth_arr or "[]"),
+                "ordersResult":json.loads(row.orders_result or "{}"),
+                "direction":row.direction,
+                "nowOpenRate":row.now_open_rate,
+                "machineNumber":row.machine_number,
+                "ts":row.ts,
+                "myTradeType":row.my_trade_type,
+                "nowPrice":row.now_price
             })
     resp = json.dumps({'s':'ok','d':beginTradeArr})
     response.set_header('Access-Control-Allow-Origin', '*')
@@ -2667,38 +2721,45 @@ def get_trades_result_arr():
         if limitTs<1686960000000:
             limitTs= 1686960000000
         print(limitTs)
-        sql = "select `symbol`,`beginTs`,`endTs`,`direction`,`profit`,`value`,cost,volInfo,openType,openTime,addTime,closeTime,openGtxTime,addGtxTime,closeGtxTime,nowOpenRate,standardRate,takeTime,beginBollUp,beginBollDown,takeValue from trades where status='updateProfit' and beginTs>%s and version=2 order by id desc"
-        tradesRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[limitTs])
+        with FUNCTION_CLIENT.get_session() as session:
+            tradesRecordData = session.exec(
+                select(Trades)
+                .where(Trades.status == "updateProfit", Trades.begin_ts > limitTs, Trades.version == 2)
+                .order_by(Trades.id.desc())
+            ).all()
         tradesRecordArr = []
-        for i in range(len(tradesRecordData)):
+        for row in tradesRecordData:
+            vol_info_parsed = json.loads(row.vol_info) if isinstance(row.vol_info, str) else (row.vol_info or {})
+            boll_up = row.begin_boll_up or 0
+            boll_down = row.begin_boll_down or 0
             tradesRecordArr.append([
-                    tradesRecordData[i][0],
-                    tradesRecordData[i][1],
-                    tradesRecordData[i][2],
-                    tradesRecordData[i][3],
-                    tradesRecordData[i][4],
-                    tradesRecordData[i][5],
-                    tradesRecordData[i][6],
-                    json.loads(tradesRecordData[i][7]),
-                    tradesRecordData[i][8],
-                    tradesRecordData[i][9],
-                    tradesRecordData[i][10],
-                    tradesRecordData[i][11],
-                    tradesRecordData[i][12],
-                    tradesRecordData[i][13],
-                    tradesRecordData[i][14],
-                    tradesRecordData[i][15],
-                    tradesRecordData[i][16],
-                    tradesRecordData[i][17],
-                    FUNCTION_CLIENT.get_percent_num(tradesRecordData[i][18]-tradesRecordData[i][19],tradesRecordData[i][19]),
-                    tradesRecordData[i][20]]
-
+                    row.symbol,
+                    row.begin_ts,
+                    row.end_ts,
+                    row.direction,
+                    row.profit,
+                    row.value,
+                    row.cost,
+                    vol_info_parsed,
+                    row.open_type,
+                    row.open_time,
+                    row.add_time,
+                    row.close_time,
+                    row.open_gtx_time,
+                    row.add_gtx_time,
+                    row.close_gtx_time,
+                    row.now_open_rate,
+                    row.standard_rate,
+                    row.take_time,
+                    FUNCTION_CLIENT.get_percent_num(boll_up - boll_down, boll_down),
+                    row.take_value]
                 )
 
 
-
-        sql = "select `openType` from trades where status='updateProfitFail' and beginTs>%s and version=2"
-        tradesRecordData = FUNCTION_CLIENT.mysql_pool_select(sql,[limitTs])
+        with FUNCTION_CLIENT.get_session() as session:
+            tradesRecordData = session.exec(
+                select(Trades).where(Trades.status == "updateProfitFail", Trades.begin_ts > limitTs, Trades.version == 2)
+            ).all()
         failValue = 0
         resp = json.dumps({'s':'ok','d':tradesRecordArr,'fT':len(tradesRecordData),'fV':failValue})
         response.set_header('Access-Control-Allow-Origin', '*')

@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timezone
+from decimal import Decimal
 from sqlmodel import SQLModel, Session, create_engine, select
+from sqlalchemy import func
 import pytest
 
 # Import all models so SQLModel.metadata is fully populated before create_all
@@ -19,6 +21,8 @@ from app.models.trades_take import TradesTake
 from app.models.income_history_take import IncomeHistoryTake
 from app.models.income_history_take_day import IncomeHistoryTakeDay
 from app.models.commission_temp_income import CommissionTempIncome
+from app.models.trades import Trades
+from app.models.begin_trade_record import BeginTradeRecord
 
 
 @pytest.fixture
@@ -887,3 +891,590 @@ def test_income_day_update_does_not_affect_other_rows(session):
         select(IncomeDay).where(IncomeDay.day_end_time == other_end)
     ).one()
     assert other.pnl == Decimal("20.0")
+
+
+# ---------------------------------------------------------------------------
+# TradeSymbol: SELECT WHERE status='yes' ORDER BY id ASC
+# ---------------------------------------------------------------------------
+
+def _make_trade_symbol(session, *, symbol="BTCUSDT", coin="BTC", quote="USDT",
+                       status="yes", index=1, default_show=True,
+                       link_symbol_arr=None) -> TradeSymbol:
+    row = TradeSymbol(
+        symbol=symbol, coin=coin, quote=quote, status=status,
+        index=index, default_show=default_show,
+        link_symbol_arr=link_symbol_arr or [],
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_trade_symbol_select_active_ordered(session):
+    """SELECT TradeSymbol WHERE status='yes' ORDER BY id ASC."""
+    _make_trade_symbol(session, symbol="ETHUSDT", coin="ETH", status="yes", index=2)
+    _make_trade_symbol(session, symbol="BTCUSDT", coin="BTC", status="yes", index=1)
+    _make_trade_symbol(session, symbol="SOLUSDT", coin="SOL", status="no", index=3)
+
+    rows = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
+    assert len(rows) == 2
+    assert rows[0].symbol == "ETHUSDT"
+    assert rows[1].symbol == "BTCUSDT"
+
+
+def test_trade_symbol_maps_to_dict(session):
+    """Simulate the mapping performed by getSymbolIndex()."""
+    _make_trade_symbol(session, symbol="BTCUSDT", coin="BTC", quote="USDT",
+                       index=0, default_show=True, link_symbol_arr=["ETHUSDT"])
+
+    rows = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
+    row = rows[0]
+    link_data = row.link_symbol_arr if isinstance(row.link_symbol_arr, (list, dict)) else json.loads(row.link_symbol_arr or "[]")
+    mapped = {
+        "symbol": row.symbol,
+        "coin": row.coin,
+        "symbolIndex": row.index,
+        "quote": row.quote,
+        "linkSymbolArr": link_data,
+        "defaultShow": row.default_show,
+        "weight": 0,
+    }
+    assert mapped["symbol"] == "BTCUSDT"
+    assert mapped["linkSymbolArr"] == ["ETHUSDT"]
+    assert mapped["defaultShow"] is True
+
+
+def test_trade_symbol_no_active_returns_empty(session):
+    """SELECT with no status='yes' rows returns empty."""
+    _make_trade_symbol(session, symbol="BTCUSDT", status="no")
+
+    rows = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
+    assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# PositionRecord: SELECT with ts range + optional symbol filter
+# ---------------------------------------------------------------------------
+
+def _make_position_record(session, *, symbol="BTCUSDT", ts=1000,
+                          position_amt=None, position_value=None,
+                          balance=None, profit=None, commission=None,
+                          maker_commission=None, unrealized_profit=None,
+                          time_val=None) -> PositionRecord:
+    row = PositionRecord(
+        symbol=symbol, ts=ts,
+        position_amt=position_amt, position_value=position_value,
+        balance=balance, profit=profit, commission=commission,
+        maker_commission=maker_commission, unrealized_profit=unrealized_profit,
+        time=time_val,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_position_record_select_by_ts_range_all(session):
+    """SELECT PositionRecord WHERE ts > begin AND ts < end (ALL symbols)."""
+    _make_position_record(session, symbol="BTCUSDT", ts=500)
+    _make_position_record(session, symbol="ETHUSDT", ts=1500)
+    _make_position_record(session, symbol="SOLUSDT", ts=2500)
+
+    rows = session.exec(
+        select(PositionRecord).where(PositionRecord.ts > 1000, PositionRecord.ts < 2000)
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].symbol == "ETHUSDT"
+
+
+def test_position_record_select_by_ts_range_with_symbol(session):
+    """SELECT PositionRecord WHERE ts range AND symbol filter."""
+    _make_position_record(session, symbol="BTCUSDT", ts=1500)
+    _make_position_record(session, symbol="ETHUSDT", ts=1500)
+
+    stmt = select(PositionRecord).where(
+        PositionRecord.ts > 1000, PositionRecord.ts < 2000
+    ).where(PositionRecord.symbol == "ETHUSDT")
+    rows = session.exec(stmt).all()
+    assert len(rows) == 1
+    assert rows[0].symbol == "ETHUSDT"
+
+
+def test_position_record_maps_to_dict(session):
+    """Simulate the mapping from get_position_record()."""
+    _make_position_record(session, symbol="BTCUSDT", ts=1500,
+                          position_amt=Decimal("0.5"), position_value=Decimal("15000"),
+                          balance=Decimal("10000"), profit=Decimal("100"),
+                          commission=Decimal("5"), maker_commission=Decimal("2"),
+                          unrealized_profit=Decimal("50"))
+
+    rows = session.exec(
+        select(PositionRecord).where(PositionRecord.ts > 1000, PositionRecord.ts < 2000)
+    ).all()
+    row = rows[0]
+    mapped = {
+        "positionAmt": row.position_amt,
+        "price": None,
+        "positionValue": row.position_value,
+        "balance": row.balance,
+        "time": row.time,
+        "profit": row.profit,
+        "commission": row.commission,
+        "makerCommission": row.maker_commission,
+        "entryPrice": None,
+        "unrealizedProfit": row.unrealized_profit,
+        "maintMargin": None,
+    }
+    assert mapped["positionAmt"] == Decimal("0.5")
+    assert mapped["balance"] == Decimal("10000")
+    assert mapped["unrealizedProfit"] == Decimal("50")
+
+
+# ---------------------------------------------------------------------------
+# PositionRecord: SELECT latest per symbol (get_all_acount_info)
+# ---------------------------------------------------------------------------
+
+def test_position_record_latest_per_symbol(session):
+    """SELECT latest PositionRecord per symbol using subquery."""
+    _make_position_record(session, symbol="BTCUSDT", ts=1000,
+                          position_value=Decimal("1000"), balance=Decimal("5000"))
+    _make_position_record(session, symbol="BTCUSDT", ts=2000,
+                          position_value=Decimal("2000"), balance=Decimal("6000"))
+    _make_position_record(session, symbol="ETHUSDT", ts=1500,
+                          position_value=Decimal("500"), balance=Decimal("3000"))
+
+    subq = select(func.max(PositionRecord.id)).group_by(PositionRecord.symbol).scalar_subquery()
+    rows = session.exec(
+        select(PositionRecord).where(PositionRecord.id.in_(subq))
+    ).all()
+
+    assert len(rows) == 2
+    all_position = sum(row.position_value or 0 for row in rows)
+    all_balance = sum(row.balance or 0 for row in rows)
+    assert all_position == Decimal("2500")
+    assert all_balance == Decimal("9000")
+
+
+# ---------------------------------------------------------------------------
+# PositionRecord: SELECT latest by symbol ORDER BY id DESC LIMIT 1 (updateTurnPrice)
+# ---------------------------------------------------------------------------
+
+def test_position_record_latest_by_symbol(session):
+    """SELECT latest PositionRecord for a specific symbol."""
+    _make_position_record(session, symbol="ETHUSDT", ts=1000, position_amt=Decimal("1.0"))
+    _make_position_record(session, symbol="ETHUSDT", ts=2000, position_amt=Decimal("-0.5"))
+
+    latest = session.exec(
+        select(PositionRecord).where(PositionRecord.symbol == "ETHUSDT")
+        .order_by(PositionRecord.id.desc()).limit(1)
+    ).first()
+    assert latest is not None
+    assert latest.position_amt == Decimal("-0.5")
+
+
+def test_position_record_turn_price_negative_amt(session):
+    """SELECT last record where position_amt > 0 (turn price logic for negative current)."""
+    _make_position_record(session, symbol="ETHUSDT", ts=1000, position_amt=Decimal("1.0"))
+    _make_position_record(session, symbol="ETHUSDT", ts=2000, position_amt=Decimal("-0.5"))
+    _make_position_record(session, symbol="ETHUSDT", ts=3000, position_amt=Decimal("-0.3"))
+
+    last_positive = session.exec(
+        select(PositionRecord)
+        .where(PositionRecord.symbol == "ETHUSDT", PositionRecord.position_amt > 0)
+        .order_by(PositionRecord.id.desc()).limit(1)
+    ).first()
+    assert last_positive is not None
+    assert last_positive.ts == 1000
+
+
+# ---------------------------------------------------------------------------
+# PositionRecord: SELECT balance WHERE ts >= zeroPoint ORDER BY id ASC LIMIT 1
+# ---------------------------------------------------------------------------
+
+def test_position_record_first_after_timestamp(session):
+    """SELECT first PositionRecord after a given ts (day begin balance)."""
+    _make_position_record(session, ts=500, balance=Decimal("9000"))
+    _make_position_record(session, ts=1000, balance=Decimal("10000"))
+    _make_position_record(session, ts=1500, balance=Decimal("11000"))
+
+    first_row = session.exec(
+        select(PositionRecord).where(PositionRecord.ts >= 800)
+        .order_by(PositionRecord.id.asc()).limit(1)
+    ).first()
+    assert first_row is not None
+    assert first_row.balance == Decimal("10000")
+
+
+def test_position_record_first_after_timestamp_none(session):
+    """SELECT first PositionRecord when no records match returns None."""
+    _make_position_record(session, ts=500, balance=Decimal("9000"))
+
+    first_row = session.exec(
+        select(PositionRecord).where(PositionRecord.ts >= 9999)
+        .order_by(PositionRecord.id.asc()).limit(1)
+    ).first()
+    assert first_row is None
+
+
+# ---------------------------------------------------------------------------
+# LossLimitTime: SELECT all, INSERT, UPDATE
+# ---------------------------------------------------------------------------
+
+def _make_loss_limit_time(session, *, symbol="BTCUSDT",
+                          limit_time="2023-03-28 01:00:00") -> LossLimitTime:
+    row = LossLimitTime(symbol=symbol, limit_time=limit_time)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_loss_limit_time_select_all(session):
+    """SELECT all LossLimitTime rows."""
+    _make_loss_limit_time(session, symbol="BTCUSDT")
+    _make_loss_limit_time(session, symbol="ETHUSDT", limit_time="2024-01-01 00:00:00")
+
+    rows = session.exec(select(LossLimitTime)).all()
+    assert len(rows) == 2
+    symbols = {r.symbol for r in rows}
+    assert symbols == {"BTCUSDT", "ETHUSDT"}
+
+
+def test_loss_limit_time_select_all_maps_to_dict(session):
+    """Simulate getLossLimitTimeData mapping."""
+    _make_loss_limit_time(session, symbol="BTCUSDT", limit_time="2023-03-28 01:00:00")
+
+    rows = session.exec(select(LossLimitTime)).all()
+    arr = [{"symbol": r.symbol, "limitTime": r.limit_time} for r in rows]
+    assert arr[0]["symbol"] == "BTCUSDT"
+    assert arr[0]["limitTime"] == "2023-03-28 01:00:00"
+
+
+def test_loss_limit_time_insert(session):
+    """INSERT a new LossLimitTime row."""
+    new_row = LossLimitTime(symbol="SOLUSDT", limit_time="2023-03-28 01:00:00")
+    session.add(new_row)
+    session.commit()
+
+    rows = session.exec(select(LossLimitTime).where(LossLimitTime.symbol == "SOLUSDT")).all()
+    assert len(rows) == 1
+    assert rows[0].limit_time == "2023-03-28 01:00:00"
+
+
+def test_loss_limit_time_update(session):
+    """UPDATE limit_time WHERE symbol."""
+    _make_loss_limit_time(session, symbol="BTCUSDT", limit_time="2023-03-28 01:00:00")
+
+    row = session.exec(
+        select(LossLimitTime).where(LossLimitTime.symbol == "BTCUSDT")
+    ).first()
+    assert row is not None
+    row.limit_time = "2026-04-03 12:00:00"
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    assert row.limit_time == "2026-04-03 12:00:00"
+
+
+def test_loss_limit_time_update_does_not_affect_other(session):
+    """UPDATE one LossLimitTime leaves others unchanged."""
+    _make_loss_limit_time(session, symbol="BTCUSDT", limit_time="old")
+    _make_loss_limit_time(session, symbol="ETHUSDT", limit_time="old")
+
+    row = session.exec(
+        select(LossLimitTime).where(LossLimitTime.symbol == "BTCUSDT")
+    ).first()
+    row.limit_time = "new"
+    session.add(row)
+    session.commit()
+
+    other = session.exec(
+        select(LossLimitTime).where(LossLimitTime.symbol == "ETHUSDT")
+    ).one()
+    assert other.limit_time == "old"
+
+
+# ---------------------------------------------------------------------------
+# TradeRecord: SELECT WHERE profit_percent_by_balance <= -0.15 ORDER BY id DESC
+# ---------------------------------------------------------------------------
+
+def _make_trade_record(session, *, symbol="BTCUSDT", end_ts=1000,
+                       profit=None, profit_percent_by_balance=None) -> TradeRecord:
+    row = TradeRecord(
+        symbol=symbol, end_ts=end_ts,
+        profit=profit, profit_percent_by_balance=profit_percent_by_balance,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_trade_record_big_loss_filter(session):
+    """SELECT TradeRecord WHERE profit_percent_by_balance <= -0.15 ORDER BY id DESC."""
+    _make_trade_record(session, symbol="BTCUSDT", end_ts=1000,
+                       profit=Decimal("-50"), profit_percent_by_balance=Decimal("-0.20"))
+    _make_trade_record(session, symbol="ETHUSDT", end_ts=2000,
+                       profit=Decimal("-10"), profit_percent_by_balance=Decimal("-0.10"))
+    _make_trade_record(session, symbol="SOLUSDT", end_ts=3000,
+                       profit=Decimal("-30"), profit_percent_by_balance=Decimal("-0.15"))
+
+    rows = session.exec(
+        select(TradeRecord)
+        .where(TradeRecord.profit_percent_by_balance <= Decimal("-0.15"))
+        .order_by(TradeRecord.id.desc())
+    ).all()
+    assert len(rows) == 2
+    # DESC order: SOLUSDT first (highest id)
+    assert rows[0].symbol == "SOLUSDT"
+    assert rows[1].symbol == "BTCUSDT"
+
+
+def test_trade_record_big_loss_empty(session):
+    """No rows match the big loss filter."""
+    _make_trade_record(session, profit_percent_by_balance=Decimal("-0.05"))
+
+    rows = session.exec(
+        select(TradeRecord)
+        .where(TradeRecord.profit_percent_by_balance <= Decimal("-0.15"))
+        .order_by(TradeRecord.id.desc())
+    ).all()
+    assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# TradesTake: SELECT WHERE symbol AND status='tradeBegin', INSERT
+# ---------------------------------------------------------------------------
+
+def test_trades_take_select_by_symbol_and_status(session):
+    """SELECT TradesTake WHERE symbol AND status='tradeBegin'."""
+    row = TradesTake(symbol="BTCUSDT", status="tradeBegin", version=3, begin_ts=1000)
+    session.add(row)
+    session.commit()
+
+    rows = session.exec(
+        select(TradesTake).where(TradesTake.symbol == "BTCUSDT", TradesTake.status == "tradeBegin")
+    ).all()
+    assert len(rows) == 1
+
+
+def test_trades_take_select_no_match(session):
+    """SELECT TradesTake with non-matching symbol returns empty."""
+    row = TradesTake(symbol="BTCUSDT", status="tradeBegin", version=3)
+    session.add(row)
+    session.commit()
+
+    rows = session.exec(
+        select(TradesTake).where(TradesTake.symbol == "ETHUSDT", TradesTake.status == "tradeBegin")
+    ).all()
+    assert rows == []
+
+
+def test_trades_take_insert(session):
+    """INSERT a new TradesTake row with all trade begin fields."""
+    new_row = TradesTake(
+        status="tradeBegin", version=3,
+        vol_multiple=Decimal("1.5"), standard_rate=Decimal("0.01"),
+        symbol="BTCUSDT", kline_arr="[[1,2,3]]",
+        now_open_rate=Decimal("0.005"), begin_machine_number="machine1",
+        direction="longs", longs_condition_a=1,
+        shorts_condition_a=0, shorts_condition_b=0,
+        btc_now_open_rate=Decimal("0.003"), eth_now_open_rate=Decimal("0.004"),
+        begin_ts=1700000000000, end_ts=1700000000000,
+        trade_type="open", update_ts=1700000000000,
+        client_begin_price=Decimal("42000"), client_end_price=Decimal("42100"),
+    )
+    session.add(new_row)
+    session.commit()
+    session.refresh(new_row)
+
+    assert new_row.id is not None
+    fetched = session.exec(select(TradesTake).where(TradesTake.id == new_row.id)).one()
+    assert fetched.symbol == "BTCUSDT"
+    assert fetched.status == "tradeBegin"
+    assert fetched.version == 3
+    assert fetched.direction == "longs"
+    assert fetched.begin_ts == 1700000000000
+
+
+def test_trades_take_skip_insert_when_exists(session):
+    """Do not insert if a tradeBegin row already exists for the symbol."""
+    existing = TradesTake(symbol="BTCUSDT", status="tradeBegin", version=3)
+    session.add(existing)
+    session.commit()
+
+    rows = session.exec(
+        select(TradesTake).where(TradesTake.symbol == "BTCUSDT", TradesTake.status == "tradeBegin")
+    ).all()
+    # Simulate: if len(tradesData)==0 -> insert; else skip
+    if len(rows) == 0:
+        session.add(TradesTake(symbol="BTCUSDT", status="tradeBegin", version=3))
+        session.commit()
+
+    all_rows = session.exec(select(TradesTake)).all()
+    assert len(all_rows) == 1
+
+
+# ---------------------------------------------------------------------------
+# BeginTradeRecord: SELECT WHERE symbol AND ts range ORDER BY id DESC LIMIT 5000
+# ---------------------------------------------------------------------------
+
+def _make_begin_trade_record(session, *, symbol="BTCUSDT", ts=1000,
+                              time_val="2026-01-01 00:00:00",
+                              direction="longs") -> BeginTradeRecord:
+    row = BeginTradeRecord(
+        symbol=symbol, ts=ts, time=time_val, direction=direction,
+        asks_depth_arr="[]", bids_depth_arr="[]", orders_result="{}",
+        now_open_rate=Decimal("0.01"), machine_number="m1",
+        my_trade_type="open", now_price=Decimal("42000"),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_begin_trade_record_select_by_symbol_and_ts(session):
+    """SELECT BeginTradeRecord WHERE symbol AND ts range ORDER BY id DESC."""
+    _make_begin_trade_record(session, symbol="BTCUSDT", ts=1000)
+    _make_begin_trade_record(session, symbol="BTCUSDT", ts=2000)
+    _make_begin_trade_record(session, symbol="ETHUSDT", ts=1500)
+
+    rows = session.exec(
+        select(BeginTradeRecord)
+        .where(BeginTradeRecord.symbol == "BTCUSDT",
+               BeginTradeRecord.ts > 500, BeginTradeRecord.ts < 2500)
+        .order_by(BeginTradeRecord.id.desc())
+        .limit(5000)
+    ).all()
+    assert len(rows) == 2
+    # DESC: highest id first
+    assert rows[0].ts == 2000
+    assert rows[1].ts == 1000
+
+
+def test_begin_trade_record_maps_to_dict(session):
+    """Simulate get_order_result_arr mapping."""
+    _make_begin_trade_record(session, symbol="BTCUSDT", ts=1500,
+                              time_val="2026-01-01 12:00:00", direction="shorts")
+
+    rows = session.exec(
+        select(BeginTradeRecord)
+        .where(BeginTradeRecord.symbol == "BTCUSDT",
+               BeginTradeRecord.ts > 1000, BeginTradeRecord.ts < 2000)
+        .order_by(BeginTradeRecord.id.desc()).limit(5000)
+    ).all()
+    row = rows[0]
+    mapped = {
+        "symbol": row.symbol,
+        "time": row.time,
+        "asksDepthArr": json.loads(row.asks_depth_arr or "[]"),
+        "bidsDepthArr": json.loads(row.bids_depth_arr or "[]"),
+        "ordersResult": json.loads(row.orders_result or "{}"),
+        "direction": row.direction,
+        "nowOpenRate": row.now_open_rate,
+        "machineNumber": row.machine_number,
+        "ts": row.ts,
+        "myTradeType": row.my_trade_type,
+        "nowPrice": row.now_price,
+    }
+    assert mapped["symbol"] == "BTCUSDT"
+    assert mapped["direction"] == "shorts"
+    assert mapped["asksDepthArr"] == []
+
+
+# ---------------------------------------------------------------------------
+# Trades: SELECT WHERE status + beginTs + version ORDER BY id DESC
+# ---------------------------------------------------------------------------
+
+def _make_trades(session, *, symbol="BTCUSDT", status="updateProfit",
+                 version=2, begin_ts=1000, **kwargs) -> Trades:
+    row = Trades(
+        symbol=symbol, status=status, version=version, begin_ts=begin_ts,
+        direction=kwargs.get("direction", "longs"),
+        profit=kwargs.get("profit", Decimal("10")),
+        value=kwargs.get("value", Decimal("1000")),
+        cost=kwargs.get("cost", Decimal("500")),
+        vol_info=kwargs.get("vol_info", "{}"),
+        open_type=kwargs.get("open_type", "normal"),
+        open_time=kwargs.get("open_time", 1),
+        add_time=kwargs.get("add_time", 0),
+        close_time=kwargs.get("close_time", 1),
+        open_gtx_time=kwargs.get("open_gtx_time", 0),
+        add_gtx_time=kwargs.get("add_gtx_time", 0),
+        close_gtx_time=kwargs.get("close_gtx_time", 0),
+        now_open_rate=kwargs.get("now_open_rate", Decimal("0.01")),
+        standard_rate=kwargs.get("standard_rate", Decimal("0.005")),
+        take_time=kwargs.get("take_time", 60),
+        begin_boll_up=kwargs.get("begin_boll_up", Decimal("100")),
+        begin_boll_down=kwargs.get("begin_boll_down", Decimal("80")),
+        take_value=kwargs.get("take_value", Decimal("200")),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_trades_select_update_profit(session):
+    """SELECT Trades WHERE status='updateProfit' AND beginTs > X AND version=2."""
+    _make_trades(session, symbol="BTCUSDT", begin_ts=2000)
+    _make_trades(session, symbol="ETHUSDT", begin_ts=500)
+    _make_trades(session, symbol="SOLUSDT", begin_ts=2000, status="tradeBegin")
+
+    rows = session.exec(
+        select(Trades)
+        .where(Trades.status == "updateProfit", Trades.begin_ts > 1000, Trades.version == 2)
+        .order_by(Trades.id.desc())
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].symbol == "BTCUSDT"
+
+
+def test_trades_select_update_profit_fail(session):
+    """SELECT Trades WHERE status='updateProfitFail' AND beginTs > X."""
+    _make_trades(session, status="updateProfitFail", begin_ts=2000)
+    _make_trades(session, status="updateProfitFail", begin_ts=500)
+    _make_trades(session, status="updateProfit", begin_ts=2000)
+
+    rows = session.exec(
+        select(Trades).where(
+            Trades.status == "updateProfitFail", Trades.begin_ts > 1000, Trades.version == 2
+        )
+    ).all()
+    assert len(rows) == 1
+
+
+def test_trades_vol_info_parsing(session):
+    """vol_info stored as JSON string can be parsed back."""
+    vol_data = {"qty": 10, "price": 42000}
+    _make_trades(session, vol_info=json.dumps(vol_data))
+
+    rows = session.exec(
+        select(Trades).where(Trades.status == "updateProfit", Trades.version == 2)
+    ).all()
+    parsed = json.loads(rows[0].vol_info) if isinstance(rows[0].vol_info, str) else rows[0].vol_info
+    assert parsed == vol_data
+
+
+def test_trades_boll_percent_calculation(session):
+    """Verify begin_boll_up - begin_boll_down percentage calculation."""
+    _make_trades(session, begin_boll_up=Decimal("110"), begin_boll_down=Decimal("100"))
+
+    rows = session.exec(
+        select(Trades).where(Trades.status == "updateProfit", Trades.version == 2)
+    ).all()
+    row = rows[0]
+    boll_up = row.begin_boll_up or 0
+    boll_down = row.begin_boll_down or 0
+    diff = boll_up - boll_down
+    assert diff == Decimal("10")
+    assert boll_down == Decimal("100")

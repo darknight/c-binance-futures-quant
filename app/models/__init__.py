@@ -13,3 +13,5 @@ from app.models.trades_take import TradesTake
 from app.models.income_history_take import IncomeHistoryTake
 from app.models.income_history_take_day import IncomeHistoryTakeDay
 from app.models.commission_temp_income import CommissionTempIncome
+from app.models.trades import Trades
+from app.models.begin_trade_record import BeginTradeRecord
