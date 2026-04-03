@@ -33,6 +33,7 @@ from settings import settings
 from infra_client import InfraClient
 from sqlmodel import select
 from app.models.trade_server_status import TradeServerStatus
+from app.models.machine_status import MachineStatus, TradeMachineStatus
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="webServer",connectMysqlPool=True)
 
@@ -2308,16 +2309,23 @@ def update_machine_status():
     symbol = str(request.forms.get('symbol'))
     updateTs = int(time.time())
 
-    sql = "select `id` from machine_status where private_ip=%s"
-    machineData = FUNCTION_CLIENT.mysql_pool_select(sql,[privateIP])
-
-    if len(machineData)==0:
-        sql = "INSERT INTO machine_status ( `private_ip`,`insert_ts`,`update_ts`,`symbol`)  VALUES ( %s, %s, %s, %s);" 
-        FUNCTION_CLIENT.mysql_pool_commit(sql,[privateIP,updateTs,updateTs,symbol])
-    else:
-        sql = "update machine_status set update_ts=%s where private_ip=%s"
-        print(privateIP)
-        FUNCTION_CLIENT.mysql_pool_commit(sql,[updateTs,privateIP])
+    with FUNCTION_CLIENT.get_session() as session:
+        existing = session.exec(
+            select(MachineStatus).where(MachineStatus.private_ip == privateIP)
+        ).all()
+        if len(existing) == 0:
+            row = MachineStatus(
+                private_ip=privateIP,
+                insert_ts=updateTs,
+                update_ts=updateTs,
+                symbol=symbol,
+            )
+            session.add(row)
+        else:
+            print(privateIP)
+            existing[0].update_ts = updateTs
+            session.add(existing[0])
+        session.commit()
 
     resp = json.dumps({'s':'ok'})
     response.set_header('Access-Control-Allow-Origin', '*')
@@ -2331,38 +2339,49 @@ def update_trade_status():
     runTime = str(request.forms.get('runTime'))
     updateTs = int(time.time())
 
-    sql = "select `id` from trade_machine_status where private_ip=%s"
-    machineData = FUNCTION_CLIENT.mysql_pool_select(sql,[privateIP])
-
-    if len(machineData)==0:
-        sql = "INSERT INTO trade_machine_status ( `private_ip`,`insert_ts`,`update_ts`,`status`)  VALUES ( %s, %s, %s, %s);" 
-        FUNCTION_CLIENT.mysql_pool_commit(sql,[privateIP,updateTs,updateTs,status])
-    else:
-        sql = "update trade_machine_status set status=%s,update_ts=%s,run_time=%s where private_ip=%s"
-        print(privateIP)
-        FUNCTION_CLIENT.mysql_pool_commit(sql,[status,updateTs,runTime,privateIP])
-
+    with FUNCTION_CLIENT.get_session() as session:
+        existing = session.exec(
+            select(TradeMachineStatus).where(TradeMachineStatus.private_ip == privateIP)
+        ).all()
+        if len(existing) == 0:
+            row = TradeMachineStatus(
+                private_ip=privateIP,
+                insert_ts=updateTs,
+                update_ts=updateTs,
+                status=status,
+            )
+            session.add(row)
+        else:
+            print(privateIP)
+            existing[0].status = status
+            existing[0].update_ts = updateTs
+            existing[0].run_time = int(runTime)
+            session.add(existing[0])
+        session.commit()
 
     resp = json.dumps({'s':'ok'})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
 
-TRADE_MACHINE_STATUS_DATA = {}
+TRADE_MACHINE_STATUS_DATA = []
 UPDATE_TRADE_MACHINE_STATUS_DATA_TS = 0
 AVERAGE_RUN_TIME = 0
 @post('/get_trade_status', methods='POST')
 def get_trade_status():
     global TRADE_MACHINE_STATUS_DATA,UPDATE_TRADE_MACHINE_STATUS_DATA_TS,AVERAGE_RUN_TIME
+    from sqlalchemy import asc as _asc
     now = int(time.time())
     if now - UPDATE_TRADE_MACHINE_STATUS_DATA_TS>60:
         UPDATE_TRADE_MACHINE_STATUS_DATA_TS = now
-        sql = "select `status`,`update_ts`,`run_time` from trade_machine_status order by update_ts asc"
-        TRADE_MACHINE_STATUS_DATA = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+        with FUNCTION_CLIENT.get_session() as session:
+            TRADE_MACHINE_STATUS_DATA = session.exec(
+                select(TradeMachineStatus).order_by(_asc(TradeMachineStatus.update_ts))
+            ).all()
         allRunTime = 0
-        for i in range(len(TRADE_MACHINE_STATUS_DATA)):
-            allRunTime = allRunTime+TRADE_MACHINE_STATUS_DATA[i][2]
+        for item in TRADE_MACHINE_STATUS_DATA:
+            allRunTime = allRunTime + (item.run_time or 0)
         AVERAGE_RUN_TIME = int(allRunTime/len(TRADE_MACHINE_STATUS_DATA))
-    resp = json.dumps({'s':'ok','updateTs':TRADE_MACHINE_STATUS_DATA[0][1],'status':TRADE_MACHINE_STATUS_DATA[0][0],'runTime':AVERAGE_RUN_TIME})
+    resp = json.dumps({'s':'ok','updateTs':TRADE_MACHINE_STATUS_DATA[0].update_ts,'status':TRADE_MACHINE_STATUS_DATA[0].status,'runTime':AVERAGE_RUN_TIME})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
 

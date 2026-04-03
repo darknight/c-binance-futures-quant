@@ -305,3 +305,268 @@ def test_update_extra_para_by_symbol_no_match(session):
 
     all_rows = session.exec(select(TradeServerStatus)).all()
     assert all(json.loads(r.extra_para)["customizeDangerous"] == 0 for r in all_rows)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for MachineStatus / TradeMachineStatus
+# ---------------------------------------------------------------------------
+
+def _make_machine_status(session, *, private_ip="10.0.1.1", symbol="BTCUSDT",
+                          insert_ts=1000, update_ts=1000) -> MachineStatus:
+    """Insert a MachineStatus row and return the refreshed object."""
+    row = MachineStatus(
+        private_ip=private_ip,
+        symbol=symbol,
+        insert_ts=insert_ts,
+        update_ts=update_ts,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def _make_trade_machine_status(session, *, private_ip="10.0.2.1", status="running",
+                                insert_ts=2000, update_ts=2000,
+                                run_time=100) -> TradeMachineStatus:
+    """Insert a TradeMachineStatus row and return the refreshed object."""
+    row = TradeMachineStatus(
+        private_ip=private_ip,
+        status=status,
+        insert_ts=insert_ts,
+        update_ts=update_ts,
+        run_time=run_time,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+# ---------------------------------------------------------------------------
+# update_machine_status — SELECT by private_ip, INSERT if not exists, UPDATE if exists
+# ---------------------------------------------------------------------------
+
+def test_machine_status_select_by_ip_absent(session):
+    """SELECT by private_ip returns empty list when no matching row exists."""
+    rows = session.exec(
+        select(MachineStatus).where(MachineStatus.private_ip == "10.0.1.99")
+    ).all()
+    assert rows == []
+
+
+def test_machine_status_select_by_ip_present(session):
+    """SELECT by private_ip returns exactly the matching row."""
+    _make_machine_status(session, private_ip="10.0.1.2")
+
+    rows = session.exec(
+        select(MachineStatus).where(MachineStatus.private_ip == "10.0.1.2")
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].private_ip == "10.0.1.2"
+
+
+def test_machine_status_insert_when_not_found(session):
+    """INSERT a new MachineStatus row when none exists for the given IP."""
+    private_ip = "10.0.1.3"
+    existing = session.exec(
+        select(MachineStatus).where(MachineStatus.private_ip == private_ip)
+    ).all()
+    assert existing == []
+
+    update_ts = 1700000001
+    new_row = MachineStatus(
+        private_ip=private_ip,
+        insert_ts=update_ts,
+        update_ts=update_ts,
+        symbol="ETHUSDT",
+    )
+    session.add(new_row)
+    session.commit()
+
+    inserted = session.exec(
+        select(MachineStatus).where(MachineStatus.private_ip == private_ip)
+    ).all()
+    assert len(inserted) == 1
+    assert inserted[0].symbol == "ETHUSDT"
+    assert inserted[0].update_ts == update_ts
+
+
+def test_machine_status_update_when_found(session):
+    """UPDATE update_ts for an existing MachineStatus row."""
+    _make_machine_status(session, private_ip="10.0.1.4", update_ts=1000)
+
+    new_ts = 9999999
+    db_row = session.exec(
+        select(MachineStatus).where(MachineStatus.private_ip == "10.0.1.4")
+    ).one()
+    db_row.update_ts = new_ts
+    session.add(db_row)
+    session.commit()
+    session.refresh(db_row)
+
+    assert db_row.update_ts == new_ts
+
+
+def test_machine_status_update_does_not_affect_other_rows(session):
+    """Updating one MachineStatus row leaves sibling rows untouched."""
+    _make_machine_status(session, private_ip="10.0.1.5", update_ts=1000)
+    _make_machine_status(session, private_ip="10.0.1.6", update_ts=1000)
+
+    target = session.exec(
+        select(MachineStatus).where(MachineStatus.private_ip == "10.0.1.5")
+    ).one()
+    target.update_ts = 8888888
+    session.add(target)
+    session.commit()
+
+    other = session.exec(
+        select(MachineStatus).where(MachineStatus.private_ip == "10.0.1.6")
+    ).one()
+    assert other.update_ts == 1000
+
+
+# ---------------------------------------------------------------------------
+# update_trade_status — SELECT by private_ip, INSERT if not exists, UPDATE if exists
+# ---------------------------------------------------------------------------
+
+def test_trade_machine_status_select_by_ip_absent(session):
+    """SELECT by private_ip returns empty list when no row exists."""
+    rows = session.exec(
+        select(TradeMachineStatus).where(TradeMachineStatus.private_ip == "10.0.2.99")
+    ).all()
+    assert rows == []
+
+
+def test_trade_machine_status_select_by_ip_present(session):
+    """SELECT by private_ip returns exactly the matching row."""
+    _make_trade_machine_status(session, private_ip="10.0.2.2")
+
+    rows = session.exec(
+        select(TradeMachineStatus).where(TradeMachineStatus.private_ip == "10.0.2.2")
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].private_ip == "10.0.2.2"
+
+
+def test_trade_machine_status_insert_when_not_found(session):
+    """INSERT a new TradeMachineStatus row when none exists for the given IP."""
+    private_ip = "10.0.2.3"
+    existing = session.exec(
+        select(TradeMachineStatus).where(TradeMachineStatus.private_ip == private_ip)
+    ).all()
+    assert existing == []
+
+    update_ts = 1700000002
+    new_row = TradeMachineStatus(
+        private_ip=private_ip,
+        insert_ts=update_ts,
+        update_ts=update_ts,
+        status="idle",
+    )
+    session.add(new_row)
+    session.commit()
+
+    inserted = session.exec(
+        select(TradeMachineStatus).where(TradeMachineStatus.private_ip == private_ip)
+    ).all()
+    assert len(inserted) == 1
+    assert inserted[0].status == "idle"
+    assert inserted[0].update_ts == update_ts
+
+
+def test_trade_machine_status_update_when_found(session):
+    """UPDATE status, update_ts, and run_time for an existing TradeMachineStatus row."""
+    _make_trade_machine_status(session, private_ip="10.0.2.4",
+                                status="idle", update_ts=2000, run_time=50)
+
+    new_ts = 9999999
+    db_row = session.exec(
+        select(TradeMachineStatus).where(TradeMachineStatus.private_ip == "10.0.2.4")
+    ).one()
+    db_row.status = "running"
+    db_row.update_ts = new_ts
+    db_row.run_time = 200
+    session.add(db_row)
+    session.commit()
+    session.refresh(db_row)
+
+    assert db_row.status == "running"
+    assert db_row.update_ts == new_ts
+    assert db_row.run_time == 200
+
+
+def test_trade_machine_status_update_does_not_affect_other_rows(session):
+    """Updating one TradeMachineStatus row leaves sibling rows untouched."""
+    _make_trade_machine_status(session, private_ip="10.0.2.5", status="idle")
+    _make_trade_machine_status(session, private_ip="10.0.2.6", status="idle")
+
+    target = session.exec(
+        select(TradeMachineStatus).where(TradeMachineStatus.private_ip == "10.0.2.5")
+    ).one()
+    target.status = "running"
+    session.add(target)
+    session.commit()
+
+    other = session.exec(
+        select(TradeMachineStatus).where(TradeMachineStatus.private_ip == "10.0.2.6")
+    ).one()
+    assert other.status == "idle"
+
+
+# ---------------------------------------------------------------------------
+# get_trade_status — SELECT all TradeMachineStatus ordered by update_ts asc
+# ---------------------------------------------------------------------------
+
+def test_trade_machine_status_select_all_ordered_asc(session):
+    """SELECT all TradeMachineStatus rows ordered by update_ts ascending."""
+    _make_trade_machine_status(session, private_ip="10.0.3.1",
+                                update_ts=3000, status="a", run_time=10)
+    _make_trade_machine_status(session, private_ip="10.0.3.2",
+                                update_ts=1000, status="b", run_time=20)
+    _make_trade_machine_status(session, private_ip="10.0.3.3",
+                                update_ts=2000, status="c", run_time=30)
+
+    from sqlalchemy import asc
+    rows = session.exec(
+        select(TradeMachineStatus).order_by(asc(TradeMachineStatus.update_ts))
+    ).all()
+
+    assert len(rows) == 3
+    assert rows[0].update_ts == 1000
+    assert rows[1].update_ts == 2000
+    assert rows[2].update_ts == 3000
+
+
+def test_trade_machine_status_first_row_fields(session):
+    """The first row (lowest update_ts) exposes status, update_ts, run_time correctly."""
+    _make_trade_machine_status(session, private_ip="10.0.4.1",
+                                update_ts=500, status="ok", run_time=77)
+    _make_trade_machine_status(session, private_ip="10.0.4.2",
+                                update_ts=900, status="err", run_time=88)
+
+    from sqlalchemy import asc
+    rows = session.exec(
+        select(TradeMachineStatus).order_by(asc(TradeMachineStatus.update_ts))
+    ).all()
+
+    first = rows[0]
+    assert first.status == "ok"
+    assert first.update_ts == 500
+    assert first.run_time == 77
+
+
+def test_trade_machine_status_average_run_time(session):
+    """Average run_time can be computed from all returned rows."""
+    _make_trade_machine_status(session, private_ip="10.0.5.1", run_time=100)
+    _make_trade_machine_status(session, private_ip="10.0.5.2", run_time=200)
+    _make_trade_machine_status(session, private_ip="10.0.5.3", run_time=300)
+
+    from sqlalchemy import asc
+    rows = session.exec(
+        select(TradeMachineStatus).order_by(asc(TradeMachineStatus.update_ts))
+    ).all()
+
+    total = sum(r.run_time for r in rows)
+    avg = int(total / len(rows))
+    assert avg == 200
