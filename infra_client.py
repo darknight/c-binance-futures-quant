@@ -107,23 +107,6 @@ class InfraClient(object):
         parsed = time.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
         return calendar.timegm(parsed)
 
-    def mysql_select(self, sql, params):
-        with self._engine.connect() as conn:
-            result = conn.exec_driver_sql(sql, tuple(params) if params else ())
-            return result.fetchall()
-
-    def mysql_commit(self, sql, params):
-        with self._engine.connect() as conn:
-            conn.exec_driver_sql(sql, tuple(params) if params else ())
-            conn.commit()
-
-    def mysql_pool_select(self, q, params):
-        return self.mysql_select(q, params)
-
-    def mysql_pool_commit(self, q, params):
-        self.mysql_commit(q, params)
-        return True
-
     @contextmanager
     def get_session(self):
         from sqlmodel import Session
