@@ -1,8 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
+from unittest.mock import MagicMock
 from web_server.state import AppState
-from web_server.routers import config
+from web_server.routers import config, market, orders, trading, income, records, status, account
 
 
 def _make_test_app():
@@ -110,3 +111,55 @@ def test_get_state_config():
         assert resp.json()["stateConfigObj"] == {"mode": "test"}
     finally:
         os.unlink(temp_path)
+
+
+def _create_test_app():
+    """Create a test app with mocked lifespan (no Binance/DB calls)."""
+    app = FastAPI()
+    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+    state = AppState()
+    state.infra_client = MagicMock()
+    state.infra_client.get_session = MagicMock()
+    app.state.app_state = state
+
+    app.include_router(config.router)
+    app.include_router(market.router)
+    app.include_router(orders.router)
+    app.include_router(trading.router)
+    app.include_router(income.router)
+    app.include_router(records.router)
+    app.include_router(status.router)
+    app.include_router(account.router)
+
+    @app.post("/health")
+    def health():
+        return {"s": "ok"}
+
+    return app
+
+
+def test_health_with_mocked_app():
+    app = _create_test_app()
+    client = TestClient(app)
+    resp = client.post("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"s": "ok"}
+
+
+def test_get_invest_percent():
+    app = _create_test_app()
+    client = TestClient(app)
+    resp = client.post("/get_invest_percent")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["s"] == "ok"
+    assert len(data["r"]) == 5
+
+
+def test_end_open_unknown_symbol():
+    app = _create_test_app()
+    client = TestClient(app)
+    resp = client.post("/end_open", data={"symbol": "UNKNOWN"})
+    assert resp.status_code == 200
+    assert resp.json() == {"s": "ok"}
