@@ -123,6 +123,7 @@ npm run build      # production build
 - Binance API keys are configured in `.env` as `BINANCE_API_ARR` (JSON array supporting multiple keys for rate limit distribution)
 - UI/trading config (`hot_key_config_obj`, `state_config_obj`) is stored in `user_config.json` (runtime-writable, not committed to git)
 - The User table has been removed — the project is single-user, no registration/login system
+- All database queries use SQLModel ORM via `InfraClient.get_session()` context manager — no raw SQL. Legacy `mysql_*` methods have been removed
 
 ## Rules
 
