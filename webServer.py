@@ -12,7 +12,6 @@ import oss2
 import socket
 import decimal
 import datetime
-import string
 import math
 import traceback
 from multiprocessing import Pool
@@ -533,76 +532,6 @@ def updateShowSymbolObj():
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
 
-
-
-@post('/register', methods='POST')
-def register():
-    account = str(request.forms.get('account'))
-    password = str(request.forms.get('password'))
-    newHotKeyConfigObj = str(request.forms.get('newHotKeyConfigObj'))
-    ip = request.environ.get('REMOTE_ADDR')
-    name = str(request.forms.get('name'))
-    if len(account)<4 or len(account)>20:
-        resp = json.dumps({'s':'accountLengthError'})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
-    if len(password)<4 or len(password)>20:
-        resp = json.dumps({'s':'passwordLengthError'})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
-    if len(name)<1 or len(name)>20:
-        resp = json.dumps({'s':'nameLengthError'})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
-
-    sql = "select `id` from user where `account`=%s" 
-    userData = FUNCTION_CLIENT.mysql_pool_select(sql,[account])
-
-    if len(userData)>0:
-        resp = json.dumps({'s':'repeatRegister'})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
-
-    showSymbolObj = {}
-    sql = "select `symbol`,`defaultShow` from trade_symbol" 
-    tradeSymbolData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
-    for i in range(len(tradeSymbolData)):
-        showSymbolObj[tradeSymbolData[i][0]]=tradeSymbolData[i][1]
-
-    if len(userData)>0:
-        resp = json.dumps({'s':'repeatRegister'})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
-
-    accessToken = ''.join(random.sample(string.ascii_letters + string.digits, 30))
-    sql = "INSERT INTO user ( `registerIP`,account,`password`,`name`,`registerTime`,`binanceApiArr`,`hotKeyConfigObj`,`stateConfigObj`,`serverInfoObj`,`accessToken`,`showSymbolObj`)  VALUES ( %s,%s,%s,%s, %s,%s ,%s,%s,%s,%s,%s  );" 
-    FUNCTION_CLIENT.mysql_pool_commit(sql,[ip,account,password,name,FUNCTION_CLIENT.turn_ts_to_time(int(time.time())),json.dumps([]),json.dumps(json.loads(newHotKeyConfigObj)),json.dumps({}),json.dumps({}),accessToken,json.dumps(showSymbolObj)])
-    resp = json.dumps({'s':'ok'})
-    response.set_header('Access-Control-Allow-Origin', '*')
-    return resp
-
-@post('/login', methods='POST')
-def login():
-    account = str(request.forms.get('account'))
-    password = str(request.forms.get('password'))
-
-    sql = "select `password`,`usdtAssets`,`binanceApiArr`,`hotKeyConfigObj`,`stateConfigObj`,`serverInfoObj`,`name`,`accessToken`,`showSymbolObj` from user where `account`=%s " 
-    userData = FUNCTION_CLIENT.mysql_pool_select(sql,[account])
-    if len(userData)==0:
-        resp = json.dumps({'s':'noRegister'})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
-    elif userData[0][0]!=password:
-        resp = json.dumps({'s':'passwordError'})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
-    else:
-        binanceApiArr = json.loads(userData[0][2])
-        for i in range(len(binanceApiArr)):
-            binanceApiArr[i]["apiSecret"]=""
-        resp = json.dumps({'s':'ok','showSymbolObj':json.loads(userData[0][8]),'account':account,'password':userData[0][0],'usdtAssets':userData[0][1],'binanceApiArr':binanceApiArr,"hotKeyConfigObj":json.loads(userData[0][3]),"stateConfigObj":json.loads(userData[0][4]),"serverInfoObj":json.loads(userData[0][5]),"name":userData[0][6],"accessToken":userData[0][7]})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
 
 
 @post('/add_api', methods='POST')

@@ -120,7 +120,7 @@ npm run build      # production build
 - Data collectors use Aliyun ECS naming conventions for auto-discovery (e.g., `tickToWs_1`, `tickToWs_2`). The `get_aliyun_private_ip_arr_by_name()` function in `infra_client.py` handles this
 - WebSocket channels A and B in `InfraClient` connect to the aggregation server at addresses configured in `.env` (`WS_ADDRESS_A`, `WS_ADDRESS_B`)
 - Configuration is managed via `.env` file (not committed to git). See `.env.example` for template
-- `binance_spot/` directory is referenced in `binance_f/impl/tradeServer.py` but does not exist in the repo — this is a known gap from the original project
+- `binance_f/impl/tradeServer.py` was a legacy prototype of `webServer.py` and has been deleted
 
 ## Rules
 
