@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     aliyun_api_secret: str = ""
     aliyun_point: str = "ap-northeast-1"
 
+    # Binance API
+    binance_api_arr: str = "[]"  # JSON array: [{"apiKey":"...","apiSecret":"...","apiDescribe":"..."}]
+
     # Web Server
     web_address: str = ""
     cancel_web_address: str = ""

@@ -33,6 +33,19 @@ from infra_client import InfraClient
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="webServer",connectMysqlPool=True)
 
+USER_CONFIG_PATH = "user_config.json"
+
+def load_user_config():
+    try:
+        with open(USER_CONFIG_PATH, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"hot_key_config_obj": {}, "state_config_obj": {}}
+
+def save_user_config(config):
+    with open(USER_CONFIG_PATH, "w") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+
 tableName = "trade_machine_status"
 
 tableExit = False
@@ -516,49 +529,20 @@ def getSymbolIndex():
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
 
-@post('/update_show_symbol_obj', methods='POST')
-def updateShowSymbolObj():
-    accessToken = str(request.forms.get('accessToken'))
-    showSymbolObj = {}
-    sql = "select `symbol`,`defaultShow` from trade_symbol" 
-    tradeSymbolData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
-    for i in range(len(tradeSymbolData)):
-        showSymbolObj[tradeSymbolData[i][0]]=tradeSymbolData[i][1]
-    sql = "update user set showSymbolObj=%s where accessToken=%s" 
-    FUNCTION_CLIENT.mysql_pool_commit(sql,[json.dumps(showSymbolObj),accessToken])
-    resp = json.dumps({'s':'ok'})
+@post('/get_config', methods='POST')
+def get_config():
+    config = load_user_config()
+    binanceApiArr = json.loads(settings.binance_api_arr)
+    for item in binanceApiArr:
+        item["apiSecret"] = ""
+    resp = json.dumps({
+        's': 'ok',
+        'binanceApiArr': binanceApiArr,
+        'hotKeyConfigObj': config.get("hot_key_config_obj", {}),
+        'stateConfigObj': config.get("state_config_obj", {})
+    })
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
-
-
-
-@post('/add_api', methods='POST')
-def add_api():
-    accessToken = str(request.forms.get('accessToken'))
-    apiKey = str(request.forms.get('apiKey'))
-    apiSecret = str(request.forms.get('apiSecret'))
-    apiDescribe = str(request.forms.get('apiDescribe'))
-
-    request_client = RequestClient(api_key=apiKey,secret_key=apiSecret)
-    result = request_client.get_position()
-    result = json.loads(result)
-    print(type(result))
-    # {'code': -2014, 'msg': 'API-key format invalid.'}
-    if 'code' in result and result['code']==-2014:
-        resp = json.dumps({'s':'error'})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
-    else:
-
-        sql = "select `binanceApiArr` from user where `accessToken`=%s " 
-        userData = FUNCTION_CLIENT.mysql_pool_select(sql,[accessToken])
-        binanceApiArr = json.loads(userData[0][0])
-        binanceApiArr.append({"apiKey":apiKey,"apiSecret":apiSecret,"apiDescribe":apiDescribe})
-        sql = "update user set `binanceApiArr`=%s where `accessToken`=%s " 
-        FUNCTION_CLIENT.mysql_pool_commit(sql,[json.dumps(binanceApiArr),accessToken])
-        resp = json.dumps({'s':'ok',"binanceApiArr":binanceApiArr})
-        response.set_header('Access-Control-Allow-Origin', '*')
-        return resp
 
 @post('/change_leverage', methods='POST')
 def change_leverage():
@@ -576,69 +560,30 @@ def change_leverage():
 
 
 
-@post('/change_quote', methods='POST')
-def change_quote():
-    global API_OBJ
-    accessToken = str(request.forms.get('accessToken'))
-    newShowSymbolObj = json.loads(request.forms.get('newShowSymbolObj'))
-    sql = "update user set `showSymbolObj`=%s where `accessToken`=%s " 
-    FUNCTION_CLIENT.mysql_pool_commit(sql,[json.dumps(newShowSymbolObj),accessToken])
-    resp = json.dumps({'s':'ok','newShowSymbolObj':newShowSymbolObj})
-    response.set_header('Access-Control-Allow-Origin', '*')
-    return resp
-
-
-@post('/delete_api', methods='POST')
-def delete_api():
-    accessToken = str(request.forms.get('accessToken'))
-    apiKey = str(request.forms.get('apiKey'))
-
-    sql = "select `binanceApiArr` from user where `accessToken`=%s " 
-    userData = FUNCTION_CLIENT.mysql_pool_select(sql,[accessToken])
-    binanceApiArr = json.loads(userData[0][0])
-
-    deleteIndex = -1
-    for i in range(len(binanceApiArr)):
-        if binanceApiArr[i]["apiKey"]==apiKey:
-            deleteIndex = i
-    if deleteIndex!=-1:
-        del binanceApiArr[deleteIndex]
-    sql = "update user set `binanceApiArr`=%s where `accessToken`=%s " 
-    FUNCTION_CLIENT.mysql_pool_commit(sql,[json.dumps(binanceApiArr),accessToken])
-    resp = json.dumps({'s':'ok',"binanceApiArr":binanceApiArr})
-    response.set_header('Access-Control-Allow-Origin', '*')
-    return resp
-
-
 @post('/modify_hot_key', methods='POST')
 def modify_hot_key():
-    accessToken = str(request.forms.get('accessToken'))
-    newHotKeyConfigObj = str(request.forms.get('newHotKeyConfigObj'))
-    sql = "update user set `hotKeyConfigObj`=%s where `accessToken`=%s " 
-    FUNCTION_CLIENT.mysql_pool_commit(sql,[json.dumps(json.loads(newHotKeyConfigObj)),accessToken])
+    newHotKeyConfigObj = json.loads(request.forms.get('newHotKeyConfigObj'))
+    config = load_user_config()
+    config["hot_key_config_obj"] = newHotKeyConfigObj
+    save_user_config(config)
     resp = json.dumps({'s':'ok',"newHotKeyConfigObj":newHotKeyConfigObj})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
 
 @post('/get_state_config', methods='POST')
 def get_state_config():
-    accessToken = str(request.forms.get('accessToken'))
-    apiKey = str(request.forms.get('apiKey'))
-
-    sql = "select `stateConfigObj` from user where `accessToken`=%s " 
-    userData = FUNCTION_CLIENT.mysql_pool_select(sql,[accessToken])
-    stateConfigObj = json.loads(userData[0][0])
+    config = load_user_config()
+    stateConfigObj = config.get("state_config_obj", {})
     resp = json.dumps({'s':'ok',"stateConfigObj":stateConfigObj})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
 
 @post('/modify_state_config', methods='POST')
 def modify_state_config():
-    accessToken = str(request.forms.get('accessToken'))
     stateConfigObj = json.loads(request.forms.get('stateConfigObj'))
-    sql = "update user set `stateConfigObj`=%s where `accessToken`=%s " 
-    FUNCTION_CLIENT.mysql_pool_commit(sql,[json.dumps(stateConfigObj),accessToken])
-
+    config = load_user_config()
+    config["state_config_obj"] = stateConfigObj
+    save_user_config(config)
     resp = json.dumps({'s':'ok','stateConfigObj':stateConfigObj})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
@@ -666,15 +611,11 @@ def updateAPIObj(apiKey):
     global API_OBJ
     if apiKey in API_OBJ:
         return
-    else:
-        sql = "select `binanceApiArr` from user" 
-        userData = FUNCTION_CLIENT.mysql_pool_select(sql,[])
-        for a in range(len(userData)):
-            binanceApiArr = json.loads(userData[a][0])
-            for b in range(len(binanceApiArr)):
-                if apiKey==binanceApiArr[b]["apiKey"]:
-                    API_OBJ[binanceApiArr[b]["apiKey"]]=binanceApiArr[b]["apiSecret"]
-                    break
+    binanceApiArr = json.loads(settings.binance_api_arr)
+    for item in binanceApiArr:
+        if apiKey == item["apiKey"]:
+            API_OBJ[item["apiKey"]] = item["apiSecret"]
+            break
 
 def cancelBinanceOrder(symbol,apiKey):
     global API_OBJ

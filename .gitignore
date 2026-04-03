@@ -5,4 +5,5 @@ __pycache__/
 .idea/
 .claude/
 .env
+user_config.json
 ws-server/target/

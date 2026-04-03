@@ -120,7 +120,9 @@ npm run build      # production build
 - Data collectors use Aliyun ECS naming conventions for auto-discovery (e.g., `tickToWs_1`, `tickToWs_2`). The `get_aliyun_private_ip_arr_by_name()` function in `infra_client.py` handles this
 - WebSocket channels A and B in `InfraClient` connect to the aggregation server at addresses configured in `.env` (`WS_ADDRESS_A`, `WS_ADDRESS_B`)
 - Configuration is managed via `.env` file (not committed to git). See `.env.example` for template
-- `binance_f/impl/tradeServer.py` was a legacy prototype of `webServer.py` and has been deleted
+- Binance API keys are configured in `.env` as `BINANCE_API_ARR` (JSON array supporting multiple keys for rate limit distribution)
+- UI/trading config (`hot_key_config_obj`, `state_config_obj`) is stored in `user_config.json` (runtime-writable, not committed to git)
+- The User table has been removed — the project is single-user, no registration/login system
 
 ## Rules
 

@@ -4,7 +4,6 @@ import pytest
 
 # Import models before create_all so SQLModel.metadata is populated
 from app.models.trade_symbol import TradeSymbol
-from app.models.user import User
 from app.models.order import Order
 from app.models.trade import Trade
 from app.models.trade_record import TradeRecord
@@ -53,20 +52,6 @@ def test_trade_symbol_unique_symbol(session):
     with pytest.raises(Exception):
         session.commit()
 
-
-def test_user_create(session):
-    user = User(
-        account="test@example.com",
-        password="hashed_pw",
-        name="tester",
-        register_ip="127.0.0.1",
-        register_time="2026-01-01 00:00:00",
-        access_token="abc123",
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    assert user.id is not None
 
 
 
