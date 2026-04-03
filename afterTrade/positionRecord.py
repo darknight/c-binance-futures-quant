@@ -8,8 +8,12 @@ import requests
 import json
 import traceback
 from datetime import datetime
+from sqlmodel import select
+from sqlalchemy import func
 from settings import settings
 from infra_client import InfraClient
+from app.models.position_record import PositionRecord
+from app.models.income_history_take import IncomeHistoryTake
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="positionReord")
 
@@ -166,9 +170,18 @@ def record_position():
 
                 allPositionValue = allPositionValue+abs(symbolPositionAmt*midPrice)
 
-        insertSQLStr = "('all','"+str(allUnrealizedProfit)+"','"+str(allPositionAmt)+"','"+str(now)+"','"+str(FUNCTION_CLIENT.turn_ts_to_time(now))+"','"+str(allPositionValue)+"','"+str(ACCOUNT_BALANCE_VALUE)+"')"
-        sql = "INSERT INTO "+POSITION_TABLE_NAME+" ( `symbol`,`unrealizedProfit`, `positionAmt`,`ts`,`time`,`positionValue`,`balance`)  VALUES "+insertSQLStr+";" 
-        FUNCTION_CLIENT.mysql_commit(sql,[])
+        with FUNCTION_CLIENT.get_session() as session:
+            record = PositionRecord(
+                symbol="all",
+                unrealized_profit=decimal.Decimal(str(allUnrealizedProfit)),
+                position_amt=decimal.Decimal(str(allPositionAmt)),
+                ts=now,
+                time=FUNCTION_CLIENT.turn_ts_to_time(now),
+                position_value=decimal.Decimal(str(allPositionValue)),
+                balance=decimal.Decimal(str(ACCOUNT_BALANCE_VALUE)),
+            )
+            session.add(record)
+            session.commit()
 
 UPDATE_PROFIT_AND_COMMISSION_TS  = 0
 def updateProfitAndCommission():
@@ -177,36 +190,67 @@ def updateProfitAndCommission():
     if now - UPDATE_PROFIT_AND_COMMISSION_TS>60:
         UPDATE_PROFIT_AND_COMMISSION_TS = now
 
-        sql = "select ts,id from "+POSITION_TABLE_NAME+"  where ts<%s and updateProfitAndCommission=0 order by id desc"
-        positionRecordData = FUNCTION_CLIENT.mysql_select(sql,[now-60*30])
-        if len(positionRecordData)>1:
-            for i in range(len(positionRecordData)-1):
-                thisID = positionRecordData[i][1]
-                sql = "SELECT `ts`,`id` from "+POSITION_TABLE_NAME+"  where `id` = (SELECT max(`id`) FROM "+POSITION_TABLE_NAME+" where `id`<%s)"
-                lastPositionRecordData = FUNCTION_CLIENT.mysql_select(sql,[thisID])
-                if len(lastPositionRecordData)>0:
-                    endTs = positionRecordData[i][0]
-                    beginTs = lastPositionRecordData[0][0]
-                    allProfit = 0
-                    allCommission = 0
-                    allMakerCommission = 0
-                    sql = "select income,incomeType,asset,bnbPrice from income_history_take  where binance_ts>%s and binance_ts<=%s  order by id asc"
-                    incomeData = FUNCTION_CLIENT.mysql_select(sql,[beginTs*1000,endTs*1000])
-                    for b in range(len(incomeData)):
-                        if incomeData[b][1]=="COMMISSION":
-                            if incomeData[b][2]=="BNB":
-                                allCommission = allCommission+incomeData[b][0]*incomeData[b][3]
-                            else:
-                                allCommission = allCommission+incomeData[b][0]
-                            if incomeData[b][0]>0:
-                                if incomeData[b][2]=="BNB":
-                                    allMakerCommission = allMakerCommission+incomeData[b][0]*incomeData[b][3]
+        with FUNCTION_CLIENT.get_session() as session:
+            # SELECT ts, id from position_record where ts < now-30min and updateProfitAndCommission=0 ORDER BY id DESC
+            positionRecords = session.exec(
+                select(PositionRecord)
+                .where(PositionRecord.ts < now - 60 * 30)
+                .where(PositionRecord.update_profit_and_commission == False)
+                .order_by(PositionRecord.id.desc())
+            ).all()
+
+            if len(positionRecords) > 1:
+                for i in range(len(positionRecords) - 1):
+                    thisRecord = positionRecords[i]
+                    thisID = thisRecord.id
+
+                    # SELECT the record with max id < thisID
+                    lastRecord = session.exec(
+                        select(PositionRecord)
+                        .where(PositionRecord.id < thisID)
+                        .order_by(PositionRecord.id.desc())
+                        .limit(1)
+                    ).first()
+
+                    if lastRecord is not None:
+                        endTs = thisRecord.ts
+                        beginTs = lastRecord.ts
+                        allProfit = 0
+                        allCommission = 0
+                        allMakerCommission = 0
+
+                        # SELECT income records in time range
+                        incomeRecords = session.exec(
+                            select(IncomeHistoryTake)
+                            .where(IncomeHistoryTake.binance_ts > beginTs * 1000)
+                            .where(IncomeHistoryTake.binance_ts <= endTs * 1000)
+                            .order_by(IncomeHistoryTake.id.asc())
+                        ).all()
+
+                        for incomeRecord in incomeRecords:
+                            if incomeRecord.income_type == "COMMISSION":
+                                if incomeRecord.asset == "BNB":
+                                    allCommission = allCommission + float(incomeRecord.income) * float(incomeRecord.bnb_price)
                                 else:
-                                    allMakerCommission = allMakerCommission+incomeData[b][0]
-                        if incomeData[b][1]=="REALIZED_PNL":
-                            allProfit = allProfit+incomeData[b][0]
-                    sql = "update "+POSITION_TABLE_NAME+" set profit=%s,commission=%s,makerCommission=%s,updateProfitAndCommission=1 where id =%s"
-                    FUNCTION_CLIENT.mysql_commit(sql,[allProfit,allCommission,allMakerCommission,thisID])
+                                    allCommission = allCommission + float(incomeRecord.income)
+                                if float(incomeRecord.income) > 0:
+                                    if incomeRecord.asset == "BNB":
+                                        allMakerCommission = allMakerCommission + float(incomeRecord.income) * float(incomeRecord.bnb_price)
+                                    else:
+                                        allMakerCommission = allMakerCommission + float(incomeRecord.income)
+                            if incomeRecord.income_type == "REALIZED_PNL":
+                                allProfit = allProfit + float(incomeRecord.income)
+
+                        # UPDATE position record with profit, commission, makerCommission
+                        dbRecord = session.exec(
+                            select(PositionRecord).where(PositionRecord.id == thisID)
+                        ).one()
+                        dbRecord.profit = decimal.Decimal(str(allProfit))
+                        dbRecord.commission = decimal.Decimal(str(allCommission))
+                        dbRecord.maker_commission = decimal.Decimal(str(allMakerCommission))
+                        dbRecord.update_profit_and_commission = True
+                        session.add(dbRecord)
+                        session.commit()
 
 ERROR_TIME = 0
 while 1:

@@ -6,8 +6,15 @@ import json
 import random
 import traceback
 import _thread
+from sqlmodel import select
+from sqlalchemy import asc
 from settings import settings
 from infra_client import InfraClient
+from app.models.income_history_take import IncomeHistoryTake
+from app.models.income_history_take_day import IncomeHistoryTakeDay
+from app.models.machine_status import TradeMachineStatus
+from app.models.trades_take import TradesTake
+from app.models.position_record import PositionRecord
 
 PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 
@@ -43,6 +50,10 @@ PROFIT_UPDATE_TS = 0
 INFO_OBJ = {}
 
 
+def _dt_to_str(dt_obj):
+    """Convert a datetime object to 'YYYY-MM-DD HH:MM:SS' string (UTC)."""
+    return dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+
 
 def getProfit():
     global ALL_PROFIT,MAKER_COMMISSION_RATE,FUNCTION_CLIENT,INCOME_TABLE_NAME,INFO_OBJ,PROFIT_UPDATE_TS,SEND_PROFIT_EX_TS
@@ -53,19 +64,23 @@ def getProfit():
     print(nowMin)
     if (todayTs != PROFIT_UPDATE_TS and nowMin>=5) or INFO_OBJ=={}:
 
-        sql = "select income,binance_ts,incomeType,bnbPrice,asset,symbol from income_history_take where binance_ts<%s"
-        data = FUNCTION_CLIENT.mysql_select(sql,[todayTs])
+        with FUNCTION_CLIENT.get_session() as session:
+            # SELECT income, binance_ts, incomeType, bnbPrice, asset, symbol from income_history_take where binance_ts < todayTs
+            incomeRows = session.exec(
+                select(IncomeHistoryTake).where(IncomeHistoryTake.binance_ts < todayTs)
+            ).all()
+
         INFO_OBJ["p"] = {}
         INFO_OBJ["c"] = {}
         INFO_OBJ["v"] = {}
         INFO_OBJ["t"] = 0
-        for i in range(len(data)):
-            income = data[i][0]
-            binanceTs = data[i][1]
-            incomeType = data[i][2]
-            bnbPrice = data[i][3]
-            asset = data[i][4]
-            symbol = data[i][5]
+        for row in incomeRows:
+            income = float(row.income) if row.income is not None else 0
+            binanceTs = row.binance_ts
+            incomeType = row.income_type
+            bnbPrice = float(row.bnb_price) if row.bnb_price is not None else 0
+            asset = row.asset
+            symbol = row.symbol
 
             if symbol!='':
                 realIncome = 0
@@ -196,34 +211,43 @@ def generateObj():
 
         LAST_GENERATE_TS = now
 
-        sql = "select `status`,`update_ts`,`run_time` from trade_machine_status order by update_ts asc"
-        TRADE_MACHINE_STATUS_DATA = FUNCTION_CLIENT.mysql_select(sql,[])
+        with FUNCTION_CLIENT.get_session() as session:
+            # SELECT status, update_ts, run_time from trade_machine_status ORDER BY update_ts ASC
+            tradeMachineRows = session.exec(
+                select(TradeMachineStatus).order_by(asc(TradeMachineStatus.update_ts))
+            ).all()
 
         allRunTime = 0
-        for i in range(len(TRADE_MACHINE_STATUS_DATA)):
-            allRunTime = allRunTime+TRADE_MACHINE_STATUS_DATA[i][2]
+        for row in tradeMachineRows:
+            allRunTime = allRunTime + (row.run_time or 0)
 
-        systemAverageRunTime = int(allRunTime/len(TRADE_MACHINE_STATUS_DATA))
-        systemUpdateTs = TRADE_MACHINE_STATUS_DATA[0][1]
-        systemStatus = TRADE_MACHINE_STATUS_DATA[0][0]
-
+        systemAverageRunTime = int(allRunTime/len(tradeMachineRows))
+        systemUpdateTs = tradeMachineRows[0].update_ts
+        systemStatus = tradeMachineRows[0].status
 
         bigLossTradeArr = []
-        sql = "select `symbol`,`endTs`,`profit`,`profitPercentByBalance`,extraInfo,direction from trades_take where status='updateProfit' order by id asc limit 1000"
-        bigLossData = FUNCTION_CLIENT.mysql_select(sql,[])
+        with FUNCTION_CLIENT.get_session() as session:
+            # SELECT symbol, endTs, profit, profitPercentByBalance, extraInfo, direction from trades_take
+            # where status='updateProfit' ORDER BY id ASC LIMIT 1000
+            bigLossRows = session.exec(
+                select(TradesTake)
+                .where(TradesTake.status == "updateProfit")
+                .order_by(TradesTake.id.asc())
+                .limit(1000)
+            ).all()
 
-        for i in range(len(bigLossData)):
-            extraInfo = json.loads(bigLossData[i][4])
+        for row in bigLossRows:
+            extraInfo = row.extra_info if row.extra_info is not None else {}
             priceRate = 0
             if "priceRate" in extraInfo:
                 priceRate = abs(int(float(extraInfo["priceRate"])*100)/100)
             bigLossTradeArr.insert(0,[
-                    bigLossData[i][0],
-                    FUNCTION_CLIENT.turn_ts_to_time(bigLossData[i][1]),
-                    int(bigLossData[i][2]),
-                    str(abs(int(bigLossData[i][3]*100)/100))+"%",
+                    row.symbol,
+                    FUNCTION_CLIENT.turn_ts_to_time(row.end_ts),
+                    int(float(row.profit) if row.profit is not None else 0),
+                    str(abs(int(float(row.profit_percent_by_balance)*100)/100))+"%",
                     priceRate,
-                    bigLossData[i][5]
+                    row.direction
                 ])
 
 
@@ -244,32 +268,25 @@ def generateObj():
                     "entryPrice":float(POSITION_ARR[a][2])
                 })
 
-        # for key in result["profit"]:
-        #     for keyT in result["profit"][key]:
-        #         result["profit"][key][keyT] = int(result["profit"][key][keyT])
-
-
-        # secondOpenObjArr = {"profit":result["profit"],"commission":result["commission"]}
-
-        # if now - SECOND_OPEN_OBJ_ARR_UPDATE_TS>60000*SECOND_OPEN_OBJ_ARR_UPDATE_DELAY_TIME:
-        #     SECOND_OPEN_OBJ_ARR = secondOpenObjArr
-        #     SECOND_OPEN_OBJ_ARR_UPDATE_TS = now
-        #     SECOND_OPEN_OBJ_ARR_UPDATE_DELAY_TIME = random.randint(1,60)
-
         todayTs = FUNCTION_CLIENT.turn_ts_to_time(FUNCTION_CLIENT.turn_ts_to_day_time(int(time.time())))*1000
 
-        sql = "select income,binance_ts,incomeType,bnbPrice,asset,symbol from income_history_take where binance_ts>=%s"
-        incomeData = FUNCTION_CLIENT.mysql_select(sql,[now-86400000])
+        with FUNCTION_CLIENT.get_session() as session:
+            # SELECT income, binance_ts, incomeType, bnbPrice, asset, symbol from income_history_take
+            # where binance_ts >= now - 24h
+            incomeRows = session.exec(
+                select(IncomeHistoryTake).where(IncomeHistoryTake.binance_ts >= now - 86400000)
+            ).all()
+
         oneDayVol = 0
         oneDayProfit = 0
         todayProfit = 0
-        for i in range(len(incomeData)):
-            income = incomeData[i][0]
-            binanceTs = incomeData[i][1]
-            incomeType = incomeData[i][2]
-            bnbPrice = incomeData[i][3]
-            asset = incomeData[i][4]
-            symbol = incomeData[i][5]
+        for row in incomeRows:
+            income = float(row.income) if row.income is not None else 0
+            binanceTs = row.binance_ts
+            incomeType = row.income_type
+            bnbPrice = float(row.bnb_price) if row.bnb_price is not None else 0
+            asset = row.asset
+            symbol = row.symbol
 
             if symbol!='':
                 realIncome = 0
@@ -346,8 +363,12 @@ def updateRecord():
     if LAST_UPDATE_RECORD_TIME!=nowTime:
         LAST_UPDATE_RECORD_TIME = nowTime
         now  = int(time.time())
-        sql = "select `positionValue`,`balance`,`ts`,`time` from position_record order by id asc"
-        positionRecordData = FUNCTION_CLIENT.mysql_select(sql,[])
+
+        with FUNCTION_CLIENT.get_session() as session:
+            # SELECT positionValue, balance, ts, time from position_record ORDER BY id ASC
+            positionRows = session.exec(
+                select(PositionRecord).order_by(PositionRecord.id.asc())
+            ).all()
 
         fromLastInvestorLimitTs = FUNCTION_CLIENT.turn_ts_to_day_time(INVESTOR_OBJ[0]["time"])
         # fromLastInvestorLimitTs = FUNCTION_CLIENT.turn_ts_to_day_time('2023-06-13 20:17:00')
@@ -382,11 +403,11 @@ def updateRecord():
         lastBalanceE = 0
         lastPositionValueE = 0
 
-        for i in range(len(positionRecordData)):
-            dataTs = positionRecordData[i][2]
-            positionValue =  int(positionRecordData[i][0])
-            balance =  int(positionRecordData[i][1])
-            dataTime = positionRecordData[i][3]
+        for row in positionRows:
+            dataTs = row.ts
+            positionValue =  int(float(row.position_value) if row.position_value is not None else 0)
+            balance =  int(float(row.balance) if row.balance is not None else 0)
+            dataTime = row.time
 
 
 
@@ -443,15 +464,17 @@ def updateDayIncome():
     now = int(time.time())
     if now - UPDATE_DAY_INCOME_TS>60*15:
         UPDATE_DAY_INCOME_TS = now
-        incomeDayTableName = DAY_INCOME_TABLE_NAME
-        incomeTableName = INCOME_TABLE_NAME
-        sql = "select `dayBeginTime` from "+incomeDayTableName+" order by id desc limit 1"
-        lastBinanceTsData = FUNCTION_CLIENT.mysql_select(sql,[])
+
+        with FUNCTION_CLIENT.get_session() as session:
+            # SELECT dayBeginTime from income_history_take_day ORDER BY id DESC LIMIT 1
+            lastRow = session.exec(
+                select(IncomeHistoryTakeDay).order_by(IncomeHistoryTakeDay.id.desc()).limit(1)
+            ).first()
 
         initIncomeDayTs = FUNCTION_CLIENT.turn_ts_to_time(INIT_DAY_INCOME_RECORD_TIME)
         lastIncomeDayTs = 0
-        if len(lastBinanceTsData)>0:
-            lastIncomeDayTs = FUNCTION_CLIENT.turn_ts_to_time(lastBinanceTsData[0][0]) 
+        if lastRow is not None:
+            lastIncomeDayTs = FUNCTION_CLIENT.turn_ts_to_time(lastRow.day_begin_time)
         if lastIncomeDayTs==0:
             lastIncomeDayTs= initIncomeDayTs
         nowTs = int(time.time())
@@ -462,43 +485,86 @@ def updateDayIncome():
         for i in range(needInsertDay):
             endDayTs = lastIncomeDayTs+86400*(i+1)
             beginDayTs = lastIncomeDayTs+86400*i
-            sql = "select `incomeType`,`income`,`asset`,`bnbPrice` from "+incomeTableName+" where binance_ts>%s and binance_ts<=%s"
-            incomeData = FUNCTION_CLIENT.mysql_select(sql,[beginDayTs*1000,endDayTs*1000])
+
+            with FUNCTION_CLIENT.get_session() as session:
+                # SELECT incomeType, income, asset, bnbPrice from income_history_take
+                # where binance_ts > beginDayTs*1000 AND binance_ts <= endDayTs*1000
+                incomeRows = session.exec(
+                    select(IncomeHistoryTake)
+                    .where(IncomeHistoryTake.binance_ts > beginDayTs * 1000)
+                    .where(IncomeHistoryTake.binance_ts <= endDayTs * 1000)
+                ).all()
 
             dayCommission = 0
             dayProfit = 0
-            for incomeDataIndex in range(len(incomeData)):
-                incomeType = incomeData[incomeDataIndex][0]
+            for incomeRow in incomeRows:
+                incomeType = incomeRow.income_type
+                incomeVal = float(incomeRow.income) if incomeRow.income is not None else 0
+                bnbPriceVal = float(incomeRow.bnb_price) if incomeRow.bnb_price is not None else 0
+                assetVal = incomeRow.asset
                 if incomeType=="COMMISSION":
-                    if incomeData[incomeDataIndex][2]=="BNB":
-                        dayCommission = dayCommission+incomeData[incomeDataIndex][1]*incomeData[incomeDataIndex][3]
-                    elif incomeData[incomeDataIndex][2]=="USDT" or incomeData[incomeDataIndex][2]=="BUSD":
-                        dayCommission = dayCommission+incomeData[incomeDataIndex][1]
+                    if assetVal=="BNB":
+                        dayCommission = dayCommission+incomeVal*bnbPriceVal
+                    elif assetVal=="USDT" or assetVal=="BUSD":
+                        dayCommission = dayCommission+incomeVal
                 if incomeType=="REALIZED_PNL" or incomeType=="FUNDING_FEE":
-                    if incomeData[incomeDataIndex][2]=="BNB":
-                        dayProfit = dayProfit+incomeData[incomeDataIndex][1]*incomeData[incomeDataIndex][3]
-                    elif incomeData[incomeDataIndex][2]=="USDT" or incomeData[incomeDataIndex][2]=="BUSD":
-                        dayProfit = dayProfit+incomeData[incomeDataIndex][1]
+                    if assetVal=="BNB":
+                        dayProfit = dayProfit+incomeVal*bnbPriceVal
+                    elif assetVal=="USDT" or assetVal=="BUSD":
+                        dayProfit = dayProfit+incomeVal
                 if incomeType=="COMMISSION" :
-                    if incomeData[incomeDataIndex][2]=="BNB":
-                        dayProfit = dayProfit+incomeData[incomeDataIndex][1]*incomeData[incomeDataIndex][3]*0.6
-                    elif incomeData[incomeDataIndex][2]=="USDT" or incomeData[incomeDataIndex][2]=="BUSD":
-                        dayProfit = dayProfit+incomeData[incomeDataIndex][1]*0.6
-            print(FUNCTION_CLIENT.turn_ts_to_time(beginDayTs))
-            sql = "select `id` from "+incomeDayTableName+" where dayBeginTime=%s"
-            incomeData = FUNCTION_CLIENT.mysql_select(sql,[FUNCTION_CLIENT.turn_ts_to_time(beginDayTs)])
-            if len(incomeData)==0:
-                sql = "INSERT INTO "+incomeDayTableName+" (`dayBeginTime`, `dayEndTime`,`commission`,`profit`)  VALUES (%s,%s,%s,%s);" 
-                FUNCTION_CLIENT.mysql_commit(sql,[FUNCTION_CLIENT.turn_ts_to_time(beginDayTs),FUNCTION_CLIENT.turn_ts_to_time(endDayTs),dayCommission,dayProfit])
-            else:
-                sql = "update "+incomeDayTableName+" set `commission`=%s,`profit`=%s where `dayEndTime`=%s " 
-                FUNCTION_CLIENT.mysql_commit(sql,[dayCommission,dayProfit,FUNCTION_CLIENT.turn_ts_to_time(endDayTs)])
-        sql = "select `dayBeginTime`,`profit` from "+incomeDayTableName+" order by id asc"
-        incomeDayData = FUNCTION_CLIENT.mysql_select(sql,[])
+                    if assetVal=="BNB":
+                        dayProfit = dayProfit+incomeVal*bnbPriceVal*0.6
+                    elif assetVal=="USDT" or assetVal=="BUSD":
+                        dayProfit = dayProfit+incomeVal*0.6
+
+            # turn_ts_to_time(int) returns a datetime object; convert to string for the str column
+            beginDayDt = FUNCTION_CLIENT.turn_ts_to_time(beginDayTs)
+            endDayDt = FUNCTION_CLIENT.turn_ts_to_time(endDayTs)
+            beginDayStr = _dt_to_str(beginDayDt)
+            endDayStr = _dt_to_str(endDayDt)
+            print(beginDayStr)
+
+            with FUNCTION_CLIENT.get_session() as session:
+                # SELECT id from income_history_take_day WHERE dayBeginTime = beginDayStr
+                existingRow = session.exec(
+                    select(IncomeHistoryTakeDay)
+                    .where(IncomeHistoryTakeDay.day_begin_time == beginDayStr)
+                ).first()
+
+                if existingRow is None:
+                    # INSERT new row
+                    newRow = IncomeHistoryTakeDay(
+                        day_begin_time=beginDayStr,
+                        day_end_time=endDayStr,
+                        commission=dayCommission,
+                        profit=dayProfit,
+                    )
+                    session.add(newRow)
+                    session.commit()
+                else:
+                    # UPDATE commission, profit WHERE dayEndTime = endDayStr
+                    targetRow = session.exec(
+                        select(IncomeHistoryTakeDay)
+                        .where(IncomeHistoryTakeDay.day_end_time == endDayStr)
+                    ).first()
+                    if targetRow is not None:
+                        targetRow.commission = dayCommission
+                        targetRow.profit = dayProfit
+                        session.add(targetRow)
+                        session.commit()
+
+        with FUNCTION_CLIENT.get_session() as session:
+            # SELECT dayBeginTime, profit from income_history_take_day ORDER BY id ASC
+            incomeDayRows = session.exec(
+                select(IncomeHistoryTakeDay).order_by(IncomeHistoryTakeDay.id.asc())
+            ).all()
+
         dayIncomeArr = []
-        for i in range(len(incomeDayData)):
-            dayIncomeArr.append([incomeDayData[i][0],incomeDayData[i][1]])
-        dayIncomeArr.append([ FUNCTION_CLIENT.turn_ts_to_time(todayTs),TODAY_PROFIT])
+        for row in incomeDayRows:
+            dayIncomeArr.append([row.day_begin_time, float(row.profit) if row.profit is not None else 0])
+        todayTs = FUNCTION_CLIENT.turn_ts_to_time(FUNCTION_CLIENT.turn_ts_to_day_time(int(time.time())))
+        dayIncomeArr.append([_dt_to_str(FUNCTION_CLIENT.turn_ts_to_time(todayTs)), TODAY_PROFIT])
 
         ossObj = {
             "ts":int(time.time()),

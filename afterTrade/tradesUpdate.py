@@ -7,6 +7,7 @@ import time
 import requests
 import socket
 import decimal
+from sqlmodel import select
 from binance_f.impl.utils.apisignature import create_signature
 from binance_f.requestclient import RequestClient
 from binance_f.constant.test import *
@@ -14,6 +15,8 @@ from binance_f.base.printobject import *
 from binance_f.model.constant import *
 from settings import settings
 from infra_client import InfraClient
+from app.models.trades_take import TradesTake
+from app.models.income_history_take import IncomeHistoryTake
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="recordOrders",connectMysql =True)
 
@@ -208,33 +211,47 @@ RECORD_OBJ = {}
 def update():
     global RECORD_OBJ,PRIVATE_IP,ACCOUNT_BALANCE_VALUE,TRADES_TABLE_NAME
     now = int(time.time()*1000)
-    sql = "select `id`,`symbol`,`beginTs` from "+TRADES_TABLE_NAME+" where status='tradeBegin'"
-    tradesData = FUNCTION_CLIENT.mysql_select(sql,[])
 
-    for tradesDataIndex in range(len(tradesData)):
-        tradeBeginTs  = tradesData[tradesDataIndex][2]
-        dataID = tradesData[tradesDataIndex][0]
-        symbol = tradesData[tradesDataIndex][1]
-        symbolPositionInfoArr = getPositionInfoArrBySymbol(symbol)
-        positionCost = symbolPositionInfoArr[1]
-        symbolPositionAmt = symbolPositionInfoArr[0]
-        positionValue = abs(int(positionCost*symbolPositionAmt))
+    with FUNCTION_CLIENT.get_session() as session:
+        # SELECT id, symbol, beginTs from trades_take where status='tradeBegin'
+        tradesRows = session.exec(
+            select(TradesTake).where(TradesTake.status == "tradeBegin")
+        ).all()
 
+        for tradeRow in tradesRows:
+            tradeBeginTs = tradeRow.begin_ts
+            dataID = tradeRow.id
+            symbol = tradeRow.symbol
+            symbolPositionInfoArr = getPositionInfoArrBySymbol(symbol)
+            positionCost = symbolPositionInfoArr[1]
+            symbolPositionAmt = symbolPositionInfoArr[0]
+            positionValue = abs(int(positionCost*symbolPositionAmt))
 
-        if ((not (symbol in RECORD_OBJ)) or RECORD_OBJ[symbol]["status"]=="tradeEnd"):
-            RECORD_OBJ[symbol] = {"balance":ACCOUNT_BALANCE_VALUE,"status":"tradeBegin","beginTs":now,"symbol":symbol,"value":positionValue,"amount":symbolPositionAmt,"cost":positionCost}
-            print(RECORD_OBJ)
-        if ( symbol in RECORD_OBJ) and RECORD_OBJ[symbol]["status"]=="tradeBegin" and positionValue>RECORD_OBJ[symbol]["value"]:
-            RECORD_OBJ[symbol]["value"] = positionValue
-            RECORD_OBJ[symbol]["amount"] = symbolPositionAmt
-            RECORD_OBJ[symbol]["cost"] = positionCost
-        if ( symbol in RECORD_OBJ) and RECORD_OBJ[symbol]["status"]=="tradeBegin" and positionValue==0 and now-tradeBeginTs>60000:
-            RECORD_OBJ[symbol]["status"]="tradeEnd"
-            insertBalance = RECORD_OBJ[symbol]["balance"]
-            if insertBalance==0:
-                insertBalance = ACCOUNT_BALANCE_VALUE
-            sql = "update "+TRADES_TABLE_NAME+" set `value` = %s,`amount`=%s,`cost`=%s,`balance`=%s,endTs=%s,`status`='tradeEnd' where id=%s"
-            FUNCTION_CLIENT.mysql_commit(sql,[RECORD_OBJ[symbol]["value"],RECORD_OBJ[symbol]["amount"],RECORD_OBJ[symbol]["cost"],insertBalance,now,dataID])
+            if ((not (symbol in RECORD_OBJ)) or RECORD_OBJ[symbol]["status"]=="tradeEnd"):
+                RECORD_OBJ[symbol] = {"balance":ACCOUNT_BALANCE_VALUE,"status":"tradeBegin","beginTs":now,"symbol":symbol,"value":positionValue,"amount":symbolPositionAmt,"cost":positionCost}
+                print(RECORD_OBJ)
+            if ( symbol in RECORD_OBJ) and RECORD_OBJ[symbol]["status"]=="tradeBegin" and positionValue>RECORD_OBJ[symbol]["value"]:
+                RECORD_OBJ[symbol]["value"] = positionValue
+                RECORD_OBJ[symbol]["amount"] = symbolPositionAmt
+                RECORD_OBJ[symbol]["cost"] = positionCost
+            if ( symbol in RECORD_OBJ) and RECORD_OBJ[symbol]["status"]=="tradeBegin" and positionValue==0 and now-tradeBeginTs>60000:
+                RECORD_OBJ[symbol]["status"]="tradeEnd"
+                insertBalance = RECORD_OBJ[symbol]["balance"]
+                if insertBalance==0:
+                    insertBalance = ACCOUNT_BALANCE_VALUE
+
+                # UPDATE trades_take set value, amount, cost, balance, endTs, status='tradeEnd' where id=X
+                dbRow = session.exec(
+                    select(TradesTake).where(TradesTake.id == dataID)
+                ).one()
+                dbRow.value = decimal.Decimal(str(RECORD_OBJ[symbol]["value"]))
+                dbRow.amount = decimal.Decimal(str(RECORD_OBJ[symbol]["amount"]))
+                dbRow.cost = decimal.Decimal(str(RECORD_OBJ[symbol]["cost"]))
+                dbRow.balance = decimal.Decimal(str(insertBalance))
+                dbRow.end_ts = now
+                dbRow.status = "tradeEnd"
+                session.add(dbRow)
+                session.commit()
 
 def takeElemZero(elem):
     return float(elem[0])
@@ -244,117 +261,147 @@ def updateProfit():
     global UPDATE_PROFIT_TS,SYMBOL_OBJ_ARR
     now = int(time.time()*1000)
     if now - UPDATE_PROFIT_TS>1*60*1000:
-        sql = "select binance_ts from income_history_take order by id desc limit 1"
-        incomeHistoryData = FUNCTION_CLIENT.mysql_select(sql,[])
-        lastBinanceUpdateTs = incomeHistoryData[0][0]
+        with FUNCTION_CLIENT.get_session() as session:
+            # SELECT binance_ts from income_history_take ORDER BY id DESC LIMIT 1
+            lastIncomeRow = session.exec(
+                select(IncomeHistoryTake).order_by(IncomeHistoryTake.id.desc()).limit(1)
+            ).first()
+            if lastIncomeRow is None:
+                return
+            lastBinanceUpdateTs = lastIncomeRow.binance_ts
 
-        UPDATE_PROFIT_TS = now
-        sql = "select  `beginTs`,`endTs`,symbol,id,balance,direction,symbol from "+TRADES_TABLE_NAME+" where status='tradeEnd' and endTs<%s"
-        tradesRecordData = FUNCTION_CLIENT.mysql_select(sql,[lastBinanceUpdateTs-5*60*1000])
-        for i in range(len(tradesRecordData)):
-            tradeBeginTs =  tradesRecordData[i][0]
-            tradeEndTs =  tradesRecordData[i][1]
-            tradeRecordDataID = tradesRecordData[i][3]
-            balance = tradesRecordData[i][4]
-            direction = tradesRecordData[i][5]
-            binanceSymbol = tradesRecordData[i][6]
-            sql = "select income,binance_ts,incomeType,bnbPrice,asset,symbol from income_history_take  where binance_ts>=%s and binance_ts<=%s and symbol=%s"
-            data = FUNCTION_CLIENT.mysql_select(sql,[tradeBeginTs,tradeEndTs,tradesRecordData[i][2]])
-            profit = 0
-            commission = 0
+            UPDATE_PROFIT_TS = now
 
-            bybitSymbol = ""
-            okexSymbol = ""
-            for i in range(len(SYMBOL_OBJ_ARR)):
-                if SYMBOL_OBJ_ARR[i]["binanceSymbol"]==binanceSymbol:
-                    bybitSymbol = SYMBOL_OBJ_ARR[i]["bybitSymbol"]
-                    okexSymbol = SYMBOL_OBJ_ARR[i]["okexSymbol"]
-                    break
+            # SELECT beginTs, endTs, symbol, id, balance, direction, symbol from trades_take
+            # where status='tradeEnd' and endTs < lastBinanceUpdateTs - 5min
+            tradesRecordRows = session.exec(
+                select(TradesTake)
+                .where(TradesTake.status == "tradeEnd")
+                .where(TradesTake.end_ts < lastBinanceUpdateTs - 5 * 60 * 1000)
+            ).all()
 
-            for i in range(len(data)):
-                income = data[i][0]
-                binanceTs = data[i][1]
-                incomeType = data[i][2]
-                bnbPrice = data[i][3]
-                asset = data[i][4]
-                symbol = data[i][5]
-                realIncome = 0
-                if asset=="BNB":
-                    realIncome = income*bnbPrice
-                else:
-                    realIncome = income
-                if incomeType=="COMMISSION":
-                    commission = commission+realIncome
-                if incomeType=="REALIZED_PNL" or incomeType=="COMMISSION":
-                    profit = profit+realIncome
+            for tradeRow in tradesRecordRows:
+                tradeBeginTs = tradeRow.begin_ts
+                tradeEndTs = tradeRow.end_ts
+                tradeRecordDataID = tradeRow.id
+                balance = float(tradeRow.balance) if tradeRow.balance is not None else 0
+                direction = tradeRow.direction
+                binanceSymbol = tradeRow.symbol
 
+                # SELECT income records in trade time range for this symbol
+                incomeRows = session.exec(
+                    select(IncomeHistoryTake)
+                    .where(IncomeHistoryTake.binance_ts >= tradeBeginTs)
+                    .where(IncomeHistoryTake.binance_ts <= tradeEndTs)
+                    .where(IncomeHistoryTake.symbol == tradeRow.symbol)
+                ).all()
 
-            if commission!=0 or profit!=0:
-                profitPercentByBalance = FUNCTION_CLIENT.get_percent_num(profit,balance)
-                priceRate = 0
-                try:
-                    url = "https://fapi.binance.com/fapi/v1/klines?symbol="+binanceSymbol+"&startTime="+str(tradeBeginTs-60000)+"&endTime="+str(tradeEndTs+60000)+"&interval=1m"
-                    response = requests.request("GET", url,timeout=(3,7)).json()
+                profit = 0
+                commission = 0
 
-                    # url = "https://fapi.binance.com/fapi/v1/klines?symbol="+symbol+"&endTime="+str(tradeBeginTs-15*60000)+"&interval=15m&limit=999"
-                    # responseB = requests.request("GET", url,timeout=(3,7)).json()
-                    bybitHoursVolArr = []
-                    if bybitSymbol!="":
-                        bybitKlineArr = getBybitKline(tradeBeginTs-15*60000,bybitSymbol)
-                        bybitHoursVolArr = []
-                        for i in range(125):
-                            bybitHoursVolArr.append(0)
-                        for i in range(len(bybitKlineArr)):
-                            index  = int(i/4)
-                            bybitHoursVolArr[index] = bybitHoursVolArr[index]+float(bybitKlineArr[len(bybitKlineArr)-1-i][6])
-                        for i in range(len(bybitHoursVolArr)):
-                            bybitHoursVolArr[i] = int(bybitHoursVolArr[i])
+                bybitSymbol = ""
+                okexSymbol = ""
+                for i in range(len(SYMBOL_OBJ_ARR)):
+                    if SYMBOL_OBJ_ARR[i]["binanceSymbol"]==binanceSymbol:
+                        bybitSymbol = SYMBOL_OBJ_ARR[i]["bybitSymbol"]
+                        okexSymbol = SYMBOL_OBJ_ARR[i]["okexSymbol"]
+                        break
 
-                    okexHoursVolArr = []
-                    if okexSymbol!="":
-                        okexKlineArr = getOkexKline(tradeBeginTs-15*60000,okexSymbol)
-                        okexHoursVolArr = []
-                        for i in range(125):
-                            okexHoursVolArr.append(0)
-                        for i in range(len(okexKlineArr)):
-                            index  = int(i/4)
-                            okexHoursVolArr[index] = okexHoursVolArr[index]+float(okexKlineArr[len(okexKlineArr)-1-i][7])
-                        for i in range(len(okexHoursVolArr)):
-                            okexHoursVolArr[i] = int(okexHoursVolArr[i])
+                for incomeRow in incomeRows:
+                    income = float(incomeRow.income) if incomeRow.income is not None else 0
+                    bnbPrice = float(incomeRow.bnb_price) if incomeRow.bnb_price is not None else 0
+                    asset = incomeRow.asset
+                    incomeType = incomeRow.income_type
+                    realIncome = 0
+                    if asset=="BNB":
+                        realIncome = income*bnbPrice
+                    else:
+                        realIncome = income
+                    if incomeType=="COMMISSION":
+                        commission = commission+realIncome
+                    if incomeType=="REALIZED_PNL" or incomeType=="COMMISSION":
+                        profit = profit+realIncome
 
-                    binanceKlineArr = getBinanceKline(tradeBeginTs-15*60000,binanceSymbol)
-                    binanceHoursVolArr = []
-                    for i in range(125):
-                        binanceHoursVolArr.append(0)
-                    for i in range(len(binanceKlineArr)):
-                        index  = int(i/4)
-                        binanceHoursVolArr[index] = binanceHoursVolArr[index]+float(binanceKlineArr[len(binanceKlineArr)-1-i][7])
-                    for i in range(len(binanceHoursVolArr)):
-                        binanceHoursVolArr[i] = int(binanceHoursVolArr[i])
-
-
-                    highPrice = 0
-                    lowPrice = 9999999
-                    for i in range(len(response)):
-                        if float(response[i][2])>highPrice:
-                            highPrice = float(response[i][2])
-                        if float(response[i][3])<lowPrice:
-                            lowPrice = float(response[i][3])
-                    if direction=="s":
-                        priceRate = FUNCTION_CLIENT.get_percent_num(highPrice-lowPrice,lowPrice)
-                    elif direction=="l":
-                        priceRate = FUNCTION_CLIENT.get_percent_num(highPrice-lowPrice,lowPrice)
-
+                if commission!=0 or profit!=0:
                     profitPercentByBalance = FUNCTION_CLIENT.get_percent_num(profit,balance)
-                    sql = "update "+TRADES_TABLE_NAME+" set profit=%s,commission=%s,status=%s,profitPercentByBalance=%s,volInfo=%s,extraInfo=%s where id=%s"
-                    FUNCTION_CLIENT.mysql_commit(sql,[profit,commission,"updateProfit",profitPercentByBalance,json.dumps({"binanceHoursVolArr":binanceHoursVolArr,"okexHoursVolArr":okexHoursVolArr,"bybitHoursVolArr":bybitHoursVolArr}),json.dumps({"priceRate":priceRate}),tradeRecordDataID])
-                except Exception as e:
-                    time.sleep(3)
-                    ex = traceback.format_exc()
-                    print(ex)
-            else:
-                sql = "update "+TRADES_TABLE_NAME+" set status=%s where id=%s"
-                FUNCTION_CLIENT.mysql_commit(sql,["updateProfitFail",tradeRecordDataID])
+                    priceRate = 0
+                    try:
+                        url = "https://fapi.binance.com/fapi/v1/klines?symbol="+binanceSymbol+"&startTime="+str(tradeBeginTs-60000)+"&endTime="+str(tradeEndTs+60000)+"&interval=1m"
+                        response = requests.request("GET", url,timeout=(3,7)).json()
+
+                        bybitHoursVolArr = []
+                        if bybitSymbol!="":
+                            bybitKlineArr = getBybitKline(tradeBeginTs-15*60000,bybitSymbol)
+                            bybitHoursVolArr = []
+                            for i in range(125):
+                                bybitHoursVolArr.append(0)
+                            for i in range(len(bybitKlineArr)):
+                                index  = int(i/4)
+                                bybitHoursVolArr[index] = bybitHoursVolArr[index]+float(bybitKlineArr[len(bybitKlineArr)-1-i][6])
+                            for i in range(len(bybitHoursVolArr)):
+                                bybitHoursVolArr[i] = int(bybitHoursVolArr[i])
+
+                        okexHoursVolArr = []
+                        if okexSymbol!="":
+                            okexKlineArr = getOkexKline(tradeBeginTs-15*60000,okexSymbol)
+                            okexHoursVolArr = []
+                            for i in range(125):
+                                okexHoursVolArr.append(0)
+                            for i in range(len(okexKlineArr)):
+                                index  = int(i/4)
+                                okexHoursVolArr[index] = okexHoursVolArr[index]+float(okexKlineArr[len(okexKlineArr)-1-i][7])
+                            for i in range(len(okexHoursVolArr)):
+                                okexHoursVolArr[i] = int(okexHoursVolArr[i])
+
+                        binanceKlineArr = getBinanceKline(tradeBeginTs-15*60000,binanceSymbol)
+                        binanceHoursVolArr = []
+                        for i in range(125):
+                            binanceHoursVolArr.append(0)
+                        for i in range(len(binanceKlineArr)):
+                            index  = int(i/4)
+                            binanceHoursVolArr[index] = binanceHoursVolArr[index]+float(binanceKlineArr[len(binanceKlineArr)-1-i][7])
+                        for i in range(len(binanceHoursVolArr)):
+                            binanceHoursVolArr[i] = int(binanceHoursVolArr[i])
+
+
+                        highPrice = 0
+                        lowPrice = 9999999
+                        for i in range(len(response)):
+                            if float(response[i][2])>highPrice:
+                                highPrice = float(response[i][2])
+                            if float(response[i][3])<lowPrice:
+                                lowPrice = float(response[i][3])
+                        if direction=="s":
+                            priceRate = FUNCTION_CLIENT.get_percent_num(highPrice-lowPrice,lowPrice)
+                        elif direction=="l":
+                            priceRate = FUNCTION_CLIENT.get_percent_num(highPrice-lowPrice,lowPrice)
+
+                        profitPercentByBalance = FUNCTION_CLIENT.get_percent_num(profit,balance)
+
+                        # UPDATE trades_take set profit, commission, status, profitPercentByBalance, volInfo, extraInfo where id=X
+                        dbRow = session.exec(
+                            select(TradesTake).where(TradesTake.id == tradeRecordDataID)
+                        ).one()
+                        dbRow.profit = decimal.Decimal(str(profit))
+                        dbRow.commission = decimal.Decimal(str(commission))
+                        dbRow.status = "updateProfit"
+                        dbRow.profit_percent_by_balance = decimal.Decimal(str(profitPercentByBalance))
+                        dbRow.vol_info = {"binanceHoursVolArr":binanceHoursVolArr,"okexHoursVolArr":okexHoursVolArr,"bybitHoursVolArr":bybitHoursVolArr}
+                        dbRow.extra_info = {"priceRate":priceRate}
+                        session.add(dbRow)
+                        session.commit()
+                    except Exception as e:
+                        time.sleep(3)
+                        ex = traceback.format_exc()
+                        print(ex)
+                else:
+                    # UPDATE trades_take set status='updateProfitFail' where id=X
+                    dbRow = session.exec(
+                        select(TradesTake).where(TradesTake.id == tradeRecordDataID)
+                    ).one()
+                    dbRow.status = "updateProfitFail"
+                    session.add(dbRow)
+                    session.commit()
 
 
 while 1:

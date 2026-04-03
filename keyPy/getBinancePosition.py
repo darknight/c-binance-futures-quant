@@ -22,19 +22,24 @@ FUNCTION_CLIENT = InfraClient(larkMsgSymbol="getBinancePosition",connectMysql =T
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
 
-sql = "select `symbol`,`id`,`index` from trade_symbol where `status`='yes' order by id asc" 
-TRADE_SYMBOL_DATA = FUNCTION_CLIENT.mysql_select(sql,[])
+from sqlmodel import select
+from app.models.trade_symbol import TradeSymbol
+
+with FUNCTION_CLIENT.get_session() as session:
+    TRADE_SYMBOL_DATA = session.exec(
+        select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
+    ).all()
 
 TRADE_SYMBOL_ARR = []
 for i in range(len(TRADE_SYMBOL_DATA)):
-    symbolIndex = str(TRADE_SYMBOL_DATA[i][2])
+    symbolIndex = str(TRADE_SYMBOL_DATA[i].index)
     if len(symbolIndex) ==2:
         symbolIndex = "0"+symbolIndex
     if len(symbolIndex) ==1:
         symbolIndex = "00"+symbolIndex
     TRADE_SYMBOL_ARR.append({
-            "symbol":TRADE_SYMBOL_DATA[i][0],
-            "id":TRADE_SYMBOL_DATA[i][1],
+            "symbol":TRADE_SYMBOL_DATA[i].symbol,
+            "id":TRADE_SYMBOL_DATA[i].id,
             "price":"0",
             "symbolIndex":symbolIndex,
             "positionIndex":0

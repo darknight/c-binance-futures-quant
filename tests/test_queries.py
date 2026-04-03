@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from sqlmodel import SQLModel, Session, create_engine, select
-from sqlalchemy import func
+from sqlalchemy import func, asc
 import pytest
 
 # Import all models so SQLModel.metadata is fully populated before create_all
@@ -1888,3 +1888,482 @@ def test_trade_symbol_update_link_symbol_arr(session):
     ethusdt = session.exec(select(TradeSymbol).where(TradeSymbol.symbol == "ETHUSDT")).first()
     assert set(btcusdt.link_symbol_arr) == {"BTCUSDT", "BTCBUSD"}
     assert ethusdt.link_symbol_arr == ["ETHUSDT"]
+
+
+# ---------------------------------------------------------------------------
+# positionRecord.py — record_position() INSERT pattern
+# ---------------------------------------------------------------------------
+
+def test_position_record_insert_all_symbol(session):
+    """INSERT PositionRecord for 'all' symbol as done in record_position()."""
+    from decimal import Decimal
+    from datetime import datetime, timezone
+    now = 1700000000
+    record = PositionRecord(
+        symbol="all",
+        unrealized_profit=Decimal("12.5"),
+        position_amt=Decimal("1.0"),
+        ts=now,
+        time=datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc),
+        position_value=Decimal("42000"),
+        balance=Decimal("10000"),
+    )
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+
+    assert record.id is not None
+    fetched = session.exec(
+        select(PositionRecord).where(PositionRecord.symbol == "all")
+    ).first()
+    assert fetched is not None
+    assert fetched.unrealized_profit == Decimal("12.5")
+    assert fetched.ts == now
+    assert fetched.update_profit_and_commission is False
+
+
+# ---------------------------------------------------------------------------
+# positionRecord.py — updateProfitAndCommission() SELECT patterns
+# ---------------------------------------------------------------------------
+
+def test_position_record_select_pending_update(session):
+    """SELECT PositionRecord WHERE ts < threshold AND update_profit_and_commission=False."""
+    from decimal import Decimal
+    _make_position_record(session, symbol="all", ts=1000)
+    _make_position_record(session, symbol="all", ts=2000)
+    _make_position_record(session, symbol="all", ts=5000)
+
+    threshold = 3000
+    rows = session.exec(
+        select(PositionRecord)
+        .where(PositionRecord.ts < threshold)
+        .where(PositionRecord.update_profit_and_commission == False)
+        .order_by(PositionRecord.id.desc())
+    ).all()
+    assert len(rows) == 2
+    # DESC: highest id first
+    assert rows[0].ts == 2000
+    assert rows[1].ts == 1000
+
+
+def test_position_record_select_max_id_before(session):
+    """SELECT PositionRecord with highest id < given id (previous record lookup)."""
+    from decimal import Decimal
+    r1 = _make_position_record(session, symbol="all", ts=1000)
+    r2 = _make_position_record(session, symbol="all", ts=2000)
+    r3 = _make_position_record(session, symbol="all", ts=3000)
+
+    # Find the record immediately before r3
+    prev = session.exec(
+        select(PositionRecord)
+        .where(PositionRecord.id < r3.id)
+        .order_by(PositionRecord.id.desc())
+        .limit(1)
+    ).first()
+    assert prev is not None
+    assert prev.ts == 2000
+
+
+def test_position_record_update_profit_commission(session):
+    """UPDATE PositionRecord profit, commission, maker_commission, update_profit_and_commission by id."""
+    from decimal import Decimal
+    record = _make_position_record(session, symbol="all", ts=1000)
+    assert record.update_profit_and_commission is False
+
+    db_row = session.exec(
+        select(PositionRecord).where(PositionRecord.id == record.id)
+    ).one()
+    db_row.profit = Decimal("100.5")
+    db_row.commission = Decimal("-5.2")
+    db_row.maker_commission = Decimal("2.1")
+    db_row.update_profit_and_commission = True
+    session.add(db_row)
+    session.commit()
+    session.refresh(db_row)
+
+    assert db_row.profit == Decimal("100.5")
+    assert db_row.commission == Decimal("-5.2")
+    assert db_row.maker_commission == Decimal("2.1")
+    assert db_row.update_profit_and_commission is True
+
+
+# ---------------------------------------------------------------------------
+# tradesUpdate.py — update() SELECT + UPDATE patterns
+# ---------------------------------------------------------------------------
+
+def test_trades_take_select_trade_begin_status(session):
+    """SELECT TradesTake WHERE status='tradeBegin' returns only matching rows."""
+    TradesTake.__table__  # ensure table registered
+    row1 = TradesTake(symbol="BTCUSDT", status="tradeBegin", begin_ts=1000)
+    row2 = TradesTake(symbol="ETHUSDT", status="tradeEnd", begin_ts=2000)
+    row3 = TradesTake(symbol="SOLUSDT", status="tradeBegin", begin_ts=3000)
+    session.add(row1)
+    session.add(row2)
+    session.add(row3)
+    session.commit()
+
+    rows = session.exec(
+        select(TradesTake).where(TradesTake.status == "tradeBegin")
+    ).all()
+    assert len(rows) == 2
+    symbols = {r.symbol for r in rows}
+    assert symbols == {"BTCUSDT", "SOLUSDT"}
+
+
+def test_trades_take_update_trade_end_fields(session):
+    """UPDATE TradesTake value, amount, cost, balance, end_ts, status='tradeEnd' by id."""
+    from decimal import Decimal
+    row = TradesTake(symbol="BTCUSDT", status="tradeBegin", begin_ts=1000)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    db_row = session.exec(
+        select(TradesTake).where(TradesTake.id == row.id)
+    ).one()
+    db_row.value = Decimal("50000")
+    db_row.amount = Decimal("1.2")
+    db_row.cost = Decimal("41666")
+    db_row.balance = Decimal("10000")
+    db_row.end_ts = 2000
+    db_row.status = "tradeEnd"
+    session.add(db_row)
+    session.commit()
+    session.refresh(db_row)
+
+    assert db_row.value == Decimal("50000")
+    assert db_row.amount == Decimal("1.2")
+    assert db_row.status == "tradeEnd"
+    assert db_row.end_ts == 2000
+
+
+# ---------------------------------------------------------------------------
+# tradesUpdate.py — updateProfit() SELECT + UPDATE patterns
+# ---------------------------------------------------------------------------
+
+def test_income_history_take_select_latest_by_id(session):
+    """SELECT IncomeHistoryTake ORDER BY id DESC LIMIT 1 returns the latest row."""
+    r1 = IncomeHistoryTake(symbol="BTCUSDT", binance_ts=1000, income_type="COMMISSION")
+    r2 = IncomeHistoryTake(symbol="ETHUSDT", binance_ts=2000, income_type="REALIZED_PNL")
+    session.add(r1)
+    session.add(r2)
+    session.commit()
+
+    latest = session.exec(
+        select(IncomeHistoryTake).order_by(IncomeHistoryTake.id.desc()).limit(1)
+    ).first()
+    assert latest is not None
+    assert latest.symbol == "ETHUSDT"
+    assert latest.binance_ts == 2000
+
+
+def test_trades_take_select_trade_end_before_ts(session):
+    """SELECT TradesTake WHERE status='tradeEnd' AND end_ts < threshold."""
+    from decimal import Decimal
+    r1 = TradesTake(symbol="BTCUSDT", status="tradeEnd", end_ts=1000)
+    r2 = TradesTake(symbol="ETHUSDT", status="tradeEnd", end_ts=5000)
+    r3 = TradesTake(symbol="SOLUSDT", status="tradeBegin", end_ts=500)
+    session.add(r1)
+    session.add(r2)
+    session.add(r3)
+    session.commit()
+
+    threshold = 3000
+    rows = session.exec(
+        select(TradesTake)
+        .where(TradesTake.status == "tradeEnd")
+        .where(TradesTake.end_ts < threshold)
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].symbol == "BTCUSDT"
+
+
+def test_income_history_take_select_in_range_by_symbol(session):
+    """SELECT IncomeHistoryTake WHERE binance_ts IN range AND symbol matches."""
+    from decimal import Decimal
+    r1 = IncomeHistoryTake(symbol="BTCUSDT", binance_ts=1000,
+                            income_type="COMMISSION", income=Decimal("0.01"),
+                            bnb_price=Decimal("300"), asset="BNB")
+    r2 = IncomeHistoryTake(symbol="BTCUSDT", binance_ts=3000,
+                            income_type="REALIZED_PNL", income=Decimal("50"),
+                            bnb_price=Decimal("0"), asset="USDT")
+    r3 = IncomeHistoryTake(symbol="ETHUSDT", binance_ts=2000,
+                            income_type="COMMISSION", income=Decimal("0.005"),
+                            bnb_price=Decimal("300"), asset="BNB")
+    r4 = IncomeHistoryTake(symbol="BTCUSDT", binance_ts=9000,
+                            income_type="COMMISSION", income=Decimal("1"),
+                            bnb_price=Decimal("0"), asset="USDT")
+    for r in [r1, r2, r3, r4]:
+        session.add(r)
+    session.commit()
+
+    rows = session.exec(
+        select(IncomeHistoryTake)
+        .where(IncomeHistoryTake.binance_ts >= 500)
+        .where(IncomeHistoryTake.binance_ts <= 5000)
+        .where(IncomeHistoryTake.symbol == "BTCUSDT")
+    ).all()
+    assert len(rows) == 2
+    types = {r.income_type for r in rows}
+    assert types == {"COMMISSION", "REALIZED_PNL"}
+
+
+def test_trades_take_update_profit_fields(session):
+    """UPDATE TradesTake profit, commission, status, profitPercentByBalance, vol_info, extra_info."""
+    from decimal import Decimal
+    row = TradesTake(symbol="BTCUSDT", status="tradeEnd", begin_ts=1000, end_ts=2000)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    db_row = session.exec(
+        select(TradesTake).where(TradesTake.id == row.id)
+    ).one()
+    db_row.profit = Decimal("75.5")
+    db_row.commission = Decimal("-3.2")
+    db_row.status = "updateProfit"
+    db_row.profit_percent_by_balance = Decimal("0.75")
+    db_row.vol_info = {"binanceHoursVolArr": [100, 200], "okexHoursVolArr": [], "bybitHoursVolArr": []}
+    db_row.extra_info = {"priceRate": 2.5}
+    session.add(db_row)
+    session.commit()
+    session.refresh(db_row)
+
+    assert db_row.profit == Decimal("75.5")
+    assert db_row.status == "updateProfit"
+    assert db_row.vol_info["binanceHoursVolArr"] == [100, 200]
+    assert db_row.extra_info["priceRate"] == 2.5
+
+
+def test_trades_take_update_status_fail(session):
+    """UPDATE TradesTake status='updateProfitFail' when no income data found."""
+    row = TradesTake(symbol="BTCUSDT", status="tradeEnd", begin_ts=1000, end_ts=2000)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    db_row = session.exec(
+        select(TradesTake).where(TradesTake.id == row.id)
+    ).one()
+    db_row.status = "updateProfitFail"
+    session.add(db_row)
+    session.commit()
+    session.refresh(db_row)
+
+    assert db_row.status == "updateProfitFail"
+
+
+# ---------------------------------------------------------------------------
+# webOssUpdate.py — IncomeHistoryTakeDay patterns
+# ---------------------------------------------------------------------------
+
+def _make_income_history_take_day(session, *, day_begin_time="2023-07-20 00:00:00",
+                                   day_end_time="2023-07-21 00:00:00",
+                                   commission=None, profit=None) -> IncomeHistoryTakeDay:
+    from decimal import Decimal
+    row = IncomeHistoryTakeDay(
+        day_begin_time=day_begin_time,
+        day_end_time=day_end_time,
+        commission=Decimal(str(commission)) if commission is not None else None,
+        profit=Decimal(str(profit)) if profit is not None else None,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def test_income_history_take_day_select_latest(session):
+    """SELECT IncomeHistoryTakeDay ORDER BY id DESC LIMIT 1 returns the most recent row."""
+    _make_income_history_take_day(session, day_begin_time="2023-07-20 00:00:00")
+    _make_income_history_take_day(session, day_begin_time="2023-07-21 00:00:00")
+
+    latest = session.exec(
+        select(IncomeHistoryTakeDay).order_by(IncomeHistoryTakeDay.id.desc()).limit(1)
+    ).first()
+    assert latest is not None
+    assert latest.day_begin_time == "2023-07-21 00:00:00"
+
+
+def test_income_history_take_day_select_latest_empty(session):
+    """SELECT latest IncomeHistoryTakeDay from empty table returns None."""
+    latest = session.exec(
+        select(IncomeHistoryTakeDay).order_by(IncomeHistoryTakeDay.id.desc()).limit(1)
+    ).first()
+    assert latest is None
+
+
+def test_income_history_take_day_select_by_day_begin_time(session):
+    """SELECT IncomeHistoryTakeDay WHERE day_begin_time = X."""
+    _make_income_history_take_day(session, day_begin_time="2023-07-20 00:00:00")
+    _make_income_history_take_day(session, day_begin_time="2023-07-21 00:00:00")
+
+    row = session.exec(
+        select(IncomeHistoryTakeDay)
+        .where(IncomeHistoryTakeDay.day_begin_time == "2023-07-20 00:00:00")
+    ).first()
+    assert row is not None
+    assert row.day_begin_time == "2023-07-20 00:00:00"
+
+
+def test_income_history_take_day_select_by_day_begin_time_none(session):
+    """SELECT IncomeHistoryTakeDay WHERE non-existent day_begin_time returns None."""
+    row = session.exec(
+        select(IncomeHistoryTakeDay)
+        .where(IncomeHistoryTakeDay.day_begin_time == "2099-01-01 00:00:00")
+    ).first()
+    assert row is None
+
+
+def test_income_history_take_day_insert(session):
+    """INSERT IncomeHistoryTakeDay as done in updateDayIncome()."""
+    from decimal import Decimal
+    new_row = IncomeHistoryTakeDay(
+        day_begin_time="2023-08-01 00:00:00",
+        day_end_time="2023-08-02 00:00:00",
+        commission=Decimal("1.5"),
+        profit=Decimal("25.0"),
+    )
+    session.add(new_row)
+    session.commit()
+    session.refresh(new_row)
+
+    assert new_row.id is not None
+    fetched = session.exec(
+        select(IncomeHistoryTakeDay).where(IncomeHistoryTakeDay.id == new_row.id)
+    ).one()
+    assert fetched.commission == Decimal("1.5")
+    assert fetched.profit == Decimal("25.0")
+
+
+def test_income_history_take_day_update_by_day_end_time(session):
+    """UPDATE IncomeHistoryTakeDay commission, profit WHERE day_end_time = X."""
+    from decimal import Decimal
+    _make_income_history_take_day(
+        session,
+        day_begin_time="2023-07-20 00:00:00",
+        day_end_time="2023-07-21 00:00:00",
+        commission=1.0, profit=10.0,
+    )
+
+    db_row = session.exec(
+        select(IncomeHistoryTakeDay)
+        .where(IncomeHistoryTakeDay.day_end_time == "2023-07-21 00:00:00")
+    ).first()
+    assert db_row is not None
+    db_row.commission = Decimal("2.5")
+    db_row.profit = Decimal("50.0")
+    session.add(db_row)
+    session.commit()
+    session.refresh(db_row)
+
+    assert db_row.commission == Decimal("2.5")
+    assert db_row.profit == Decimal("50.0")
+
+
+def test_income_history_take_day_update_does_not_affect_other_rows(session):
+    """Updating one IncomeHistoryTakeDay row leaves sibling rows untouched."""
+    from decimal import Decimal
+    _make_income_history_take_day(
+        session, day_begin_time="2023-07-20 00:00:00",
+        day_end_time="2023-07-21 00:00:00", profit=10.0,
+    )
+    _make_income_history_take_day(
+        session, day_begin_time="2023-07-21 00:00:00",
+        day_end_time="2023-07-22 00:00:00", profit=20.0,
+    )
+
+    db_row = session.exec(
+        select(IncomeHistoryTakeDay)
+        .where(IncomeHistoryTakeDay.day_end_time == "2023-07-21 00:00:00")
+    ).first()
+    db_row.profit = Decimal("99.0")
+    session.add(db_row)
+    session.commit()
+
+    other = session.exec(
+        select(IncomeHistoryTakeDay)
+        .where(IncomeHistoryTakeDay.day_end_time == "2023-07-22 00:00:00")
+    ).first()
+    assert other.profit == Decimal("20.0")
+
+
+def test_income_history_take_day_select_all_ordered_asc(session):
+    """SELECT IncomeHistoryTakeDay ORDER BY id ASC returns rows in insert order."""
+    from decimal import Decimal
+    _make_income_history_take_day(session, day_begin_time="2023-07-20 00:00:00", profit=10.0)
+    _make_income_history_take_day(session, day_begin_time="2023-07-21 00:00:00", profit=20.0)
+    _make_income_history_take_day(session, day_begin_time="2023-07-22 00:00:00", profit=30.0)
+
+    rows = session.exec(
+        select(IncomeHistoryTakeDay).order_by(IncomeHistoryTakeDay.id.asc())
+    ).all()
+    assert len(rows) == 3
+    assert rows[0].day_begin_time == "2023-07-20 00:00:00"
+    assert rows[1].day_begin_time == "2023-07-21 00:00:00"
+    assert rows[2].day_begin_time == "2023-07-22 00:00:00"
+    assert [float(r.profit) for r in rows] == [10.0, 20.0, 30.0]
+
+
+def test_income_history_take_day_day_income_arr_building(session):
+    """Verify day income arr building pattern from updateDayIncome()."""
+    from decimal import Decimal
+    _make_income_history_take_day(session, day_begin_time="2023-07-20 00:00:00",
+                                   day_end_time="2023-07-21 00:00:00", profit=15.0)
+    _make_income_history_take_day(session, day_begin_time="2023-07-21 00:00:00",
+                                   day_end_time="2023-07-22 00:00:00", profit=25.0)
+
+    rows = session.exec(
+        select(IncomeHistoryTakeDay).order_by(IncomeHistoryTakeDay.id.asc())
+    ).all()
+    day_income_arr = [[r.day_begin_time, float(r.profit)] for r in rows]
+
+    assert len(day_income_arr) == 2
+    assert day_income_arr[0] == ["2023-07-20 00:00:00", 15.0]
+    assert day_income_arr[1] == ["2023-07-21 00:00:00", 25.0]
+
+
+# ---------------------------------------------------------------------------
+# webOssUpdate.py — generateObj() SELECT TradeMachineStatus + TradesTake patterns
+# ---------------------------------------------------------------------------
+
+def test_trade_machine_status_sum_run_time(session):
+    """Compute systemAverageRunTime from all TradeMachineStatus rows."""
+    _make_trade_machine_status(session, private_ip="10.6.0.1", update_ts=1000, run_time=100)
+    _make_trade_machine_status(session, private_ip="10.6.0.2", update_ts=2000, run_time=200)
+    _make_trade_machine_status(session, private_ip="10.6.0.3", update_ts=3000, run_time=300)
+
+    rows = session.exec(
+        select(TradeMachineStatus).order_by(asc(TradeMachineStatus.update_ts))
+    ).all()
+
+    all_run_time = sum(r.run_time or 0 for r in rows)
+    system_average_run_time = int(all_run_time / len(rows))
+    system_update_ts = rows[0].update_ts
+    system_status = rows[0].status
+
+    assert all_run_time == 600
+    assert system_average_run_time == 200
+    assert system_update_ts == 1000
+
+
+def test_trades_take_select_update_profit_limit_1000(session):
+    """SELECT TradesTake WHERE status='updateProfit' ORDER BY id ASC LIMIT 1000."""
+    for i in range(5):
+        row = TradesTake(symbol=f"SYM{i}USDT", status="updateProfit",
+                         begin_ts=i * 1000, end_ts=i * 2000)
+        session.add(row)
+    row_other = TradesTake(symbol="XYZUSDT", status="tradeEnd", begin_ts=0)
+    session.add(row_other)
+    session.commit()
+
+    rows = session.exec(
+        select(TradesTake)
+        .where(TradesTake.status == "updateProfit")
+        .order_by(TradesTake.id.asc())
+        .limit(1000)
+    ).all()
+    assert len(rows) == 5
+    assert all(r.status == "updateProfit" for r in rows)
+    # ASC: first inserted first
+    assert rows[0].symbol == "SYM0USDT"
