@@ -15,34 +15,6 @@ FUNCTION_CLIENT = InfraClient(larkMsgSymbol="positionReord")
 
 POSITION_TABLE_NAME = "position_record"
 
-tableExit = False
-sql ="show tables;"
-tableData = FUNCTION_CLIENT.mysql_select(sql,[])
-for a in range(len(tableData)):
-    if tableData[a][0]==POSITION_TABLE_NAME:
-        tableExit = True
-
-print(tableExit)
-if not tableExit:
-    sql="""CREATE TABLE `"""+POSITION_TABLE_NAME+"""` (
-`id` int NOT NULL AUTO_INCREMENT,
-`symbol` varchar(255) DEFAULT NULL,
-`unrealizedProfit` double(30,10) DEFAULT NULL,
-`positionAmt` double(30,10) DEFAULT NULL,
-`ts` bigint DEFAULT NULL,
-`time` varchar(255) DEFAULT NULL,
-
-`positionValue` double(30,10) DEFAULT NULL,
-`balance` double(30,10) DEFAULT NULL,
-`updateProfitAndCommission` int DEFAULT 0,
-`profit` double(30,10) DEFAULT NULL,
-`commission` double(30,10) DEFAULT NULL,
-`makerCommission` double(30,10) DEFAULT NULL,
-PRIMARY KEY (`id`) USING BTREE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
-;
-"""
-    FUNCTION_CLIENT.mysql_commit(sql,[])
 
 PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 

@@ -56,63 +56,6 @@ class UTCEncoder(json.JSONEncoder):
 def json_dumps(obj):
     return json.dumps(obj, cls=UTCEncoder)
 
-tableName = "trade_machine_status"
-
-tableExit = False
-
-sql ="show tables;"
-tableData = FUNCTION_CLIENT.mysql_select(sql,[])
-
-for a in range(len(tableData)):
-    if tableData[a][0]==tableName:
-        tableExit = True
-
-if not tableExit:
-    sql="""CREATE TABLE `"""+tableName+"""` (
-    `id` int NOT NULL AUTO_INCREMENT,
-    `private_ip` varchar(255) DEFAULT NULL,
-    `insert_ts` bigint DEFAULT NULL,
-    `update_ts` bigint DEFAULT NULL,
-    `status` varchar(255) DEFAULT NULL,
-    `run_time` bigint DEFAULT NULL,
-
-    PRIMARY KEY (`id`) USING BTREE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
-    ;
-    """
-
-    FUNCTION_CLIENT.mysql_commit(sql,[])
-
-tableName = "machine_status"
-
-tableExit = False
-
-sql ="show tables;"
-tableData = FUNCTION_CLIENT.mysql_select(sql,[])
-
-for a in range(len(tableData)):
-    if tableData[a][0]==tableName:
-        tableExit = True
-
-if not tableExit:
-    sql="""CREATE TABLE `"""+tableName+"""` (
-    `id` int NOT NULL AUTO_INCREMENT,
-    `private_ip` varchar(255) DEFAULT NULL,
-    `insert_ts` bigint DEFAULT NULL,
-    `update_ts` bigint DEFAULT NULL,
-    `status` varchar(255) DEFAULT NULL,
-    `symbol` varchar(255) DEFAULT NULL,
-    `run_time` bigint DEFAULT NULL,
-
-    PRIMARY KEY (`id`) USING BTREE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
-    ;
-    """
-
-    FUNCTION_CLIENT.mysql_commit(sql,[])
-
-
-
 
 
 ORDER_ID_SYMBOL = "wTake"

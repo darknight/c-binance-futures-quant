@@ -20,26 +20,6 @@ INCOME_TABLE_NAME = "income_history_take"
 INIT_DAY_INCOME_RECORD_TIME = "2023-07-20 00:00:00"
 
 
-tableName = DAY_INCOME_TABLE_NAME
-tableExit = False
-sql ="show tables;"
-tableData = FUNCTION_CLIENT.mysql_select(sql,[])
-for a in range(len(tableData)):
-    if tableData[a][0]==tableName:
-        tableExit = True
-
-if not tableExit:
-    sql="""CREATE TABLE `"""+tableName+"""` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `dayBeginTime` varchar(30) DEFAULT NULL,
-  `dayEndTime` varchar(30) DEFAULT NULL,
-  `commission` double(30,10) DEFAULT NULL,
-  `profit` double(30,10) DEFAULT NULL,
-  PRIMARY KEY (`id`) USING BTREE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
-;
-"""
-    FUNCTION_CLIENT.mysql_commit(sql,[])
 
 LAST_GENERATE_TIME = ""
 

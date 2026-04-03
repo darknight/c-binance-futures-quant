@@ -33,36 +33,6 @@ TRADE_SYMBOL_ARR = response["d"]
 TRADES_TABLE_NAME = "binance_trades"
 
 
-tableName = TRADES_TABLE_NAME
-tableExit = False
-sql ="show tables;"
-tableData = FUNCTION_CLIENT.mysql_select(sql,[])
-for a in range(len(tableData)):
-    if tableData[a][0]==tableName:
-        tableExit = True
-
-print(tableExit)
-if not tableExit:
-    sql="""CREATE TABLE `"""+tableName+"""`  (
-      `id` int(11) NOT NULL AUTO_INCREMENT,
-      `buyer` int(1) NULL,
-      `commission` double(30,10) NULL,
-      `binanceId` bigInt(30) NULL,
-      `maker` int(1) NULL,
-      `orderId`  bigInt(30) NULL,
-      `price` double(30,10) NULL,
-      `qty` double(30,10) NULL,
-      `quoteQty` double(30,10) NULL,
-      `realizedPnl` double(30,10) NULL,
-      `side` varchar(11) NULL,
-      `positionSide` varchar(11) NULL,
-      `symbol` varchar(30) NULL,
-      `ts` bigInt(30) NULL,
-
-      `myTs` int(11) NULL,
-      PRIMARY KEY (`id`) USING BTREE
-    );"""
-    FUNCTION_CLIENT.mysql_commit(sql,[])
 
 
 BNB_PRICE  = 0

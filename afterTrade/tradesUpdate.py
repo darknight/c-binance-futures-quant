@@ -19,40 +19,6 @@ FUNCTION_CLIENT = InfraClient(larkMsgSymbol="recordOrders",connectMysql =True)
 
 TRADES_TABLE_NAME = "trades_take"
 
-tableExit = False
-
-sql ="show tables;"
-tableData = FUNCTION_CLIENT.mysql_select(sql,[])
-
-for a in range(len(tableData)):
-    if tableData[a][0]==TRADES_TABLE_NAME:
-        tableExit = True
-
-if not tableExit:
-    sql="""CREATE TABLE `"""+TRADES_TABLE_NAME+"""` (
-    `id` int NOT NULL AUTO_INCREMENT,
-    `beginTs` bigint DEFAULT NULL,
-    `endTs` bigint DEFAULT NULL,
-    `profitPercentByBalance` double(30,10) DEFAULT NULL,
-    `profit` double(30,10) DEFAULT NULL,
-    `balance` double(30,10) DEFAULT NULL,
-    `income` double(30,10) DEFAULT NULL,
-    `value` double(30,10) DEFAULT NULL,
-    `amount` double(30,10) DEFAULT NULL,
-    `cost` double(30,10) DEFAULT NULL,
-    `commission` double(30,10) DEFAULT NULL,
-    `status` varchar(255) DEFAULT NULL,
-    `direction` varchar(255) DEFAULT NULL,
-    `symbol` varchar(255) DEFAULT NULL,
-    `volInfo` json DEFAULT NULL,
-    `extraInfo` json DEFAULT NULL,
-
-    PRIMARY KEY (`id`) USING BTREE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
-    ;
-    """
-
-    FUNCTION_CLIENT.mysql_commit(sql,[])
 
 PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 

@@ -33,43 +33,6 @@ TRADE_SYMBOL_ARR = response["d"]
 ORDERS_TABLE_NAME = "binance_orders"
 
 
-tableName = ORDERS_TABLE_NAME
-tableExit = False
-sql ="show tables;"
-tableData = FUNCTION_CLIENT.mysql_select(sql,[])
-for a in range(len(tableData)):
-    if tableData[a][0]==tableName:
-        tableExit = True
-
-print(tableExit)
-if not tableExit:
-    sql="""CREATE TABLE `"""+tableName+"""`  (
-      `id` int(11) NOT NULL AUTO_INCREMENT,
-      `avgPrice` double(30,10) NULL,
-      `clientOrderId` varchar(255) NULL,
-      `cumQuote` double(30,10) NULL,
-      `executedQty` double(30,10) NULL,
-      `orderId` bigInt(30) NULL,
-      `origQty` double(30,10) NULL,
-      `origType` varchar(255) NULL,
-      `price` double(30,10) NULL,
-      `reduceOnly` varchar(255) NULL,
-      `side` varchar(255) NULL,
-      `positionSide` varchar(255) NULL,
-      `status` varchar(255) NULL,
-      `stopPrice` double(30,10) NULL,
-      `closePosition` varchar(30) NULL,
-      `symbol` varchar(30) NULL,
-      `timeInForce` varchar(30) NULL,
-      `orderType` varchar(30) NULL,
-      `updateTime` bigInt(30) NULL,
-      `workingType` varchar(30) NULL,
-      `priceProtect` varchar(30) NULL,
-      `binanceTs` bigInt(30) NULL,
-      `myTs` bigInt(30) NULL,
-      PRIMARY KEY (`id`) USING BTREE
-    );"""
-    FUNCTION_CLIENT.mysql_commit(sql,[])
 
 
 def recordTrades(symbol):
