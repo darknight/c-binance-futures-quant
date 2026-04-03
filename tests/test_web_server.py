@@ -32,3 +32,18 @@ def test_app_state_next_order_id():
     result = state.next_order_id()
     assert result == first + 1
     assert state.order_id_index == first + 1
+
+
+from web_server.binance_helpers import json_dumps, UTCEncoder
+from datetime import datetime
+
+
+def test_utc_encoder_datetime():
+    dt = datetime(2024, 1, 15, 12, 0, 0)
+    result = json_dumps({"time": dt})
+    assert "2024-01-15T12:00:00" in result
+
+
+def test_utc_encoder_non_datetime():
+    result = json_dumps({"value": 42})
+    assert '"value": 42' in result
