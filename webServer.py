@@ -31,6 +31,8 @@ from aliyunsdkecs.request.v20140526.StartInstancesRequest import StartInstancesR
 from aliyunsdkecs.request.v20140526.StopInstancesRequest import StopInstancesRequest
 from settings import settings
 from infra_client import InfraClient
+from sqlmodel import select
+from app.models.trade_server_status import TradeServerStatus
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="webServer",connectMysqlPool=True)
 
@@ -1856,20 +1858,20 @@ def updateTradeServerStatusData():
     now = int(time.time())
     if now - UPDATE_TRADE_SERVER_STATUS_DATA_TS>5:
         UPDATE_TRADE_SERVER_STATUS_DATA_TS = now
-        sql = "select `extraPara`,`runInfo`,`symbol`,`privateIP`,`name`,`mySymbol`,`updateTs`,`updateTime` from trade_server_status"
-        data = FUNCTION_CLIENT.mysql_pool_select(sql,[])
+        with FUNCTION_CLIENT.get_session() as session:
+            rows = session.exec(select(TradeServerStatus)).all()
         TRADE_SERVER_STATUS_DATA = []
-        for i in range(len(data)):
-            extraPara = json.loads(data[i][0])
+        for item in rows:
+            extraPara = json.loads(item.extra_para) if item.extra_para else {}
             TRADE_SERVER_STATUS_DATA.append({
                     "extraPara":extraPara,
-                    "runInfo":json.loads(data[i][1]),
-                    "symbol":data[i][2],
-                    "privateIP":data[i][3],
-                    "name":data[i][4],
-                    "mySymbol":data[i][5],
-                    "updateTs":data[i][6],
-                    "updateTime":data[i][7],
+                    "runInfo":json.loads(item.run_info) if item.run_info else {},
+                    "symbol":item.symbol,
+                    "privateIP":item.private_ip,
+                    "name":item.name,
+                    "mySymbol":item.my_symbol,
+                    "updateTs":item.update_ts,
+                    "updateTime":item.update_time,
                     "customizeDangerousData":extraPara
                 })
 
@@ -1879,12 +1881,21 @@ def check_maker_server_in_data():
     privateIP = str(request.forms.get('privateIP'))
     symbol = str(request.forms.get('symbol'))
     mySymbol = str(request.forms.get('mySymbol'))
-    sql = "select `status` from trade_server_status where privateIP =%s "
-    data = FUNCTION_CLIENT.mysql_pool_select(sql,[privateIP])
-    if len(data)==0:
-        extraPara = {"customizeDangerous": 0}
-        sql = "INSERT INTO trade_server_status ( privateIP,`name`,`extraPara`,symbol,mySymbol)  VALUES ( %s, %s, %s, %s, %s);" 
-        FUNCTION_CLIENT.mysql_pool_commit(sql,[privateIP,name,json.dumps(extraPara),symbol,mySymbol])
+    with FUNCTION_CLIENT.get_session() as session:
+        existing = session.exec(
+            select(TradeServerStatus).where(TradeServerStatus.private_ip == privateIP)
+        ).all()
+        if len(existing) == 0:
+            extraPara = {"customizeDangerous": 0}
+            new_row = TradeServerStatus(
+                private_ip=privateIP,
+                name=name,
+                extra_para=json.dumps(extraPara),
+                symbol=symbol,
+                my_symbol=mySymbol,
+            )
+            session.add(new_row)
+            session.commit()
     resp = json.dumps({'s':'ok'})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
@@ -1914,8 +1925,16 @@ def update_maker_server_run_info():
     }
     now = int(time.time())
     symbol = str(request.forms.get('symbol'))
-    sql = "update trade_server_status set runInfo=%s,updateTs=%s,updateTime=%s where privateIP=%s"
-    FUNCTION_CLIENT.mysql_pool_commit(sql,[json.dumps(runInfo),now,FUNCTION_CLIENT.turn_ts_to_time(now),privateIP])
+    with FUNCTION_CLIENT.get_session() as session:
+        db_row = session.exec(
+            select(TradeServerStatus).where(TradeServerStatus.private_ip == privateIP)
+        ).first()
+        if db_row is not None:
+            db_row.run_info = json.dumps(runInfo)
+            db_row.update_ts = now
+            db_row.update_time = FUNCTION_CLIENT.turn_ts_to_time(now)
+            session.add(db_row)
+            session.commit()
     updateTradeServerStatusData()
     customizeDangerousData = {"customizeDangerous":0}
     print(privateIP)
@@ -1956,18 +1975,18 @@ def update_customize_dangerous():
     customizeDangerous = int(request.forms.get('customizeDangerous'))
     symbol = str(request.forms.get('symbol'))
 
-    if symbol=="all":
-        extraInfo = {
-            "customizeDangerous":customizeDangerous
-        }
-        sql = "update trade_server_status set extraPara=%s"
-        FUNCTION_CLIENT.mysql_pool_commit(sql,[json.dumps(extraInfo)])
-    else:
-        extraInfo = {
-            "customizeDangerous":customizeDangerous
-        }
-        sql = "update trade_server_status set extraPara=%s where symbol=%s"
-        FUNCTION_CLIENT.mysql_pool_commit(sql,[json.dumps(extraInfo),symbol])
+    extraInfo = json.dumps({"customizeDangerous": customizeDangerous})
+    with FUNCTION_CLIENT.get_session() as session:
+        if symbol == "all":
+            rows = session.exec(select(TradeServerStatus)).all()
+        else:
+            rows = session.exec(
+                select(TradeServerStatus).where(TradeServerStatus.symbol == symbol)
+            ).all()
+        for row in rows:
+            row.extra_para = extraInfo
+            session.add(row)
+        session.commit()
     resp = json.dumps({'s':'ok'})
     response.set_header('Access-Control-Allow-Origin', '*')
     return resp
