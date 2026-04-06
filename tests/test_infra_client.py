@@ -33,3 +33,52 @@ def test_infra_client_reads_server_name_from_settings(monkeypatch):
     importlib.reload(infra_mod)
     client = infra_mod.InfraClient(larkMsgSymbol="test")
     assert client.serverName == "test_machine_42"
+
+
+def test_infra_client_has_no_oss2_import():
+    """infra_client.py should not import oss2."""
+    import inspect
+    import importlib
+    import infra_client as mod
+    importlib.reload(mod)
+    source = inspect.getsource(mod)
+    assert "import oss2" not in source
+
+
+def test_infra_client_uses_boto3():
+    """infra_client.py should import boto3."""
+    import inspect
+    import importlib
+    import infra_client as mod
+    importlib.reload(mod)
+    source = inspect.getsource(mod)
+    assert "import boto3" in source
+
+
+def test_infra_client_has_s3_client_when_configured(monkeypatch):
+    """InfraClient should init boto3 S3 client when R2 is configured."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("R2_ACCOUNT_ID", "test-account")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "test-key")
+    monkeypatch.setenv("R2_ACCESS_KEY_SECRET", "test-secret")
+    import importlib
+    import settings as settings_mod
+    importlib.reload(settings_mod)
+    import infra_client as infra_mod
+    importlib.reload(infra_mod)
+    client = infra_mod.InfraClient(larkMsgSymbol="test")
+    assert client.s3_client is not None
+    assert client.r2_bucket == "zuibite-api"
+
+
+def test_infra_client_no_s3_client_when_not_configured(monkeypatch):
+    """InfraClient should set s3_client to None when R2 is not configured."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("R2_ACCOUNT_ID", "")
+    import importlib
+    import settings as settings_mod
+    importlib.reload(settings_mod)
+    import infra_client as infra_mod
+    importlib.reload(infra_mod)
+    client = infra_mod.InfraClient(larkMsgSymbol="test")
+    assert client.s3_client is None

@@ -4,7 +4,7 @@ import socket
 import json
 import requests
 import time
-import oss2
+import boto3
 from datetime import datetime as dt, timezone
 from websocket import create_connection
 from settings import settings
@@ -39,11 +39,17 @@ class InfraClient(object):
 
         self.updateMachineStatusTs = 0
 
-        # TODO(Phase 2): Re-enable OSS init after aliyun_api_key/aliyun_api_secret
-        # are replaced with a new OSS-specific config approach.
-        # oss_auth = oss2.Auth(settings.aliyun_api_key, settings.aliyun_api_secret)
-        # self.oss_bucket = oss2.Bucket(oss_auth, 'http://oss-cn-hongkong.aliyuncs.com', 'zuibite-api')
-        self.oss_bucket = None
+        if settings.r2_account_id:
+            self.s3_client = boto3.client(
+                's3',
+                endpoint_url=f"https://{settings.r2_account_id}.r2.cloudflarestorage.com",
+                aws_access_key_id=settings.r2_access_key_id,
+                aws_secret_access_key=settings.r2_access_key_secret,
+            )
+            self.r2_bucket = settings.r2_bucket_name
+        else:
+            self.s3_client = None
+            self.r2_bucket = None
 
         self.serverName = settings.server_name
 
@@ -251,17 +257,18 @@ class InfraClient(object):
 
     def oss_put_obj(self, obj, name):
         try:
-            inputData = json.dumps(obj, ensure_ascii=False)
-            ossResult = self.oss_bucket.put_object(name, inputData)
+            body = json.dumps(obj, ensure_ascii=False)
+            self.s3_client.put_object(
+                Bucket=self.r2_bucket, Key=name, Body=body,
+                ContentType='application/json'
+            )
         except Exception as e:
             print(e)
 
     def oss_get_obj(self, name):
         try:
-            object_stream = self.oss_bucket.get_object(name)
-            readObj = object_stream.read()
-            readObj = json.loads(str(readObj, 'utf-8'))
-            return readObj
+            resp = self.s3_client.get_object(Bucket=self.r2_bucket, Key=name)
+            return json.loads(resp['Body'].read().decode('utf-8'))
         except Exception as e:
             print(e)
 
