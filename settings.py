@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     r2_bucket_name: str = "zuibite-api"
     r2_public_domain: str = ""  # e.g. "https://cdn.example.com"
 
+    # Frontend CDN URL (used by react-front webpack build via QUANT_CDN_URL env var)
+    quant_cdn_url: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

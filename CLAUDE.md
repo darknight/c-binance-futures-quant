@@ -103,8 +103,11 @@ uv run pytest tests/ -v
 ```bash
 cd react-front
 npm install
-npm start          # dev server
-npm run build      # production build
+
+# QUANT_CDN_URL is required — set it in .env or pass directly
+source ../.env
+QUANT_CDN_URL=$QUANT_CDN_URL npm start          # dev server
+QUANT_CDN_URL=$QUANT_CDN_URL npm run build      # production build
 ```
 
 ## Design Principles
@@ -123,6 +126,7 @@ npm run build      # production build
 - Data collectors are configured via environment variables (`SERVER_NAME`, `MACHINE_INDEX`, `TICK_INSTANCE_COUNT`) for multi-instance sharding
 - WebSocket channels A and B in `InfraClient` connect to the aggregation server at addresses configured in `.env` (`WS_ADDRESS_A`, `WS_ADDRESS_B`)
 - Configuration is managed via `.env` file (not committed to git). See `.env.example` for template
+- Frontend CDN URL is injected at webpack build time via `QUANT_CDN_URL` env var (→ `CDN_BASE_URL` global). Never hardcode domains in frontend source
 - Binance API keys are configured in `.env` as `BINANCE_API_ARR` (JSON array supporting multiple keys for rate limit distribution)
 - UI/trading config (`hot_key_config_obj`, `state_config_obj`) is stored in `user_config.json` (runtime-writable, not committed to git)
 - The User table has been removed — the project is single-user, no registration/login system
