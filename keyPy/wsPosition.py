@@ -22,9 +22,7 @@ from infra_client import InfraClient
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="wsPosition",connectMysql =True)
 
-SERVER_NAME = FUNCTION_CLIENT.getServerName()
-
-MACHINE_INDEX = int(SERVER_NAME.replace("wsPosition_",""))
+MACHINE_INDEX = settings.machine_index
 
 BINANCE_API_KEY_ARR =["",""]
 BINANCE_API_SECRET_ARR =["",""]

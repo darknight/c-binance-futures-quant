@@ -20,9 +20,7 @@ FUNCTION_CLIENT = InfraClient(larkMsgSymbol="positionRisk",connectMysql =True)
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
 
-SERVER_NAME = FUNCTION_CLIENT.getServerName()
-
-MACHINE_INDEX = int(SERVER_NAME.replace("positionRisk_",""))
+MACHINE_INDEX = settings.machine_index
 
 
 BINANCE_API_KEY_ARR =["",""]

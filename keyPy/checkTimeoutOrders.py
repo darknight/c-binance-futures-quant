@@ -19,20 +19,13 @@ from binance_f.model.constant import *
 import numpy as np
 from settings import settings
 from infra_client import InfraClient
-from aliyunsdkcore.client import AcsClient
-from aliyunsdkcore.request import CommonRequest
-from aliyunsdkcore.acs_exception.exceptions import ClientException
-from aliyunsdkcore.acs_exception.exceptions import ServerException
-from aliyunsdkecs.request.v20140526.DescribeInstancesRequest import DescribeInstancesRequest
 ORDER_ID_SYMBOL = "t"
 
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="checkTimeoutOrders",connectMysql =True)
 
 
-SERVER_NAME = FUNCTION_CLIENT.getServerName()
-
-MACHINE_INDEX = int(SERVER_NAME.replace("checkTimeoutOrders_",""))
+MACHINE_INDEX = settings.machine_index
 
 BINANCE_API_KEY_ARR =["",""]
 BINANCE_API_SECRET_ARR =["",""]
@@ -45,34 +38,7 @@ PRIVATE_IP = FUNCTION_CLIENT.get_private_ip()
 ORDER_ID_INDEX  = random.randint(1,100000)
 
 
-SERVER_IP_ARR = []
-nowPage =1
-emptyReq =False
-while  not emptyReq:
-    client =  AcsClient(settings.aliyun_api_key, settings.aliyun_api_secret,settings.aliyun_point)
-    client.add_endpoint(settings.aliyun_point,'Ecs',"ecs."+settings.aliyun_point+".aliyuncs.com")
-    request = DescribeInstancesRequest()
-    request.set_PageNumber(nowPage)
-    request.set_PageSize(100)
-    request.set_accept_format('json')
-    # request.modify_point('cn-hongkong','ecs',"ecs.cn-hongkong.aliyuncs.com")
-    # request.set_Endpoint("ecs.cn-hongkong.aliyuncs.com")
-    instanceInfoArr = client.do_action_with_exception(request)
-    instanceInfoArr=json.loads(str(instanceInfoArr, encoding='utf-8'))
-
-    instanceInfoArr=instanceInfoArr["Instances"]["Instance"]
-    if len(instanceInfoArr)==0:
-        emptyReq=True
-    else:
-        for i in range(len(instanceInfoArr)):
-            if instanceInfoArr[i]["InstanceName"].find("secondOpen")>=0:
-                print(instanceInfoArr[i]["InstanceName"])
-                machineNumber  = int(instanceInfoArr[i]["InstanceName"].split("_")[1])
-                if MACHINE_INDEX==0 and machineNumber<=6:
-                    SERVER_IP_ARR.append(instanceInfoArr[i]["VpcAttributes"]["PrivateIpAddress"]["IpAddress"][0])
-                if MACHINE_INDEX==1 and machineNumber>6:
-                    SERVER_IP_ARR.append(instanceInfoArr[i]["VpcAttributes"]["PrivateIpAddress"]["IpAddress"][0])
-    nowPage = nowPage+1
+SERVER_IP_ARR = json.loads(settings.second_open_hosts)
 
 SERVER_IP_ARR_INDEX = 0
 

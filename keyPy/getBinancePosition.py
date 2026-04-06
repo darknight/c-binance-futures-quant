@@ -46,9 +46,7 @@ for i in range(len(TRADE_SYMBOL_DATA)):
         })
 
 
-SERVER_NAME = FUNCTION_CLIENT.getServerName()
-
-MACHINE_INDEX = int(SERVER_NAME.replace("getBinancePosition_",""))
+MACHINE_INDEX = settings.machine_index
 
 BINANCE_API_KEY_ARR =[""]
 BINANCE_API_SECRET_ARR =[""]

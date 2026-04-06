@@ -33,9 +33,7 @@ BINANCE_API_SECRET =""
 
 LAST_SHORT_LOSS_LOCK_TS = 0
 
-SERVER_NAME = FUNCTION_CLIENT.getServerName()
-
-MACHINE_INDEX = int(SERVER_NAME.replace("commission_",""))
+MACHINE_INDEX = settings.machine_index
 
 INCOME_TABLE_NAME_ARR = ["income_history_take"]
 
