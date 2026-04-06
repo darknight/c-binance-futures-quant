@@ -21,7 +21,7 @@ Package management: uv (pyproject.toml + uv.lock)
 
 - **ws-server/** — Rust rewrite of the WebSocket aggregation server (replaces wsServer.cpp). Uses tokio + tokio-tungstenite. HashMap-based storage (no fixed array limits), structured logging (tracing), optional token auth, graceful shutdown. Protocol-compatible with the C++ version — Python clients require zero changes.
 - **wsServer.cpp** — Legacy C++ WebSocket server (being replaced by ws-server/). Compiled with: `g++ wsServer.cpp -o wsServer.out -lboost_system` (requires websocketpp + boost)
-- **infra_client.py** — `InfraClient` class providing PostgreSQL via SQLAlchemy/SQLModel, WebSocket (A/B channels), Telegram notifications, Aliyun OSS, and Binance order routing
+- **infra_client.py** — `InfraClient` class providing PostgreSQL via SQLAlchemy/SQLModel, WebSocket (A/B channels), Telegram notifications, Cloudflare R2 object storage, and Binance order routing
 - **settings.py** — pydantic-settings based configuration, reads from `.env` file. Template: `.env.example`
 - **binance_f/** — Modified Binance Futures Python SDK (forked from official)
 - **web_server/** — FastAPI-based HTTP server providing REST APIs for order management, position queries, trade recording, and machine status. Entry point: `run_web_server.py`
@@ -34,7 +34,7 @@ Package management: uv (pyproject.toml + uv.lock)
 | `dataPy/` | Distributed data collectors (tick, kline) that feed into wsServer. Each instance identified by `SERVER_NAME` and `MACHINE_INDEX` env vars |
 | `keyPy/` | Critical operations: position monitoring (`getBinancePosition`, `positionRisk`, `wsPosition`), stop-loss (`makerStopLoss`), order timeout (`checkTimeoutOrders`), commission tracking |
 | `afterTrade/` | Post-trade data processing and OSS upload for frontend display |
-| `react-front/` | React frontend (webpack, antd, echarts, mobx). Reads data from Aliyun OSS |
+| `react-front/` | React frontend (webpack, antd, echarts, mobx). Reads data from Cloudflare R2 |
 | `updateSymbol/` | SQL scripts and Python for managing the `trade_symbol` table in PostgreSQL |
 | `tool/` | Speed test utilities for Binance API and tick data |
 | `ws-server/` | Rust WebSocket aggregation server (tokio + tokio-tungstenite). Replaces wsServer.cpp |
