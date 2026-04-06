@@ -21,7 +21,7 @@ Package management: uv (pyproject.toml + uv.lock)
 
 - **ws-server/** — Rust rewrite of the WebSocket aggregation server (replaces wsServer.cpp). Uses tokio + tokio-tungstenite. HashMap-based storage (no fixed array limits), structured logging (tracing), optional token auth, graceful shutdown. Protocol-compatible with the C++ version — Python clients require zero changes.
 - **wsServer.cpp** — Legacy C++ WebSocket server (being replaced by ws-server/). Compiled with: `g++ wsServer.cpp -o wsServer.out -lboost_system` (requires websocketpp + boost)
-- **infra_client.py** — `InfraClient` class providing PostgreSQL via SQLAlchemy/SQLModel, WebSocket (A/B channels), Telegram notifications, Aliyun ECS discovery, Aliyun OSS, and Binance order routing
+- **infra_client.py** — `InfraClient` class providing PostgreSQL via SQLAlchemy/SQLModel, WebSocket (A/B channels), Telegram notifications, Aliyun OSS, and Binance order routing
 - **settings.py** — pydantic-settings based configuration, reads from `.env` file. Template: `.env.example`
 - **binance_f/** — Modified Binance Futures Python SDK (forked from official)
 - **web_server/** — FastAPI-based HTTP server providing REST APIs for order management, position queries, trade recording, and machine status. Entry point: `run_web_server.py`
@@ -31,7 +31,7 @@ Package management: uv (pyproject.toml + uv.lock)
 
 | Directory | Purpose |
 |-----------|---------|
-| `dataPy/` | Distributed data collectors (tick, kline) that feed into wsServer. Use Aliyun server naming conventions (e.g., `tickToWs_1`) for auto-discovery |
+| `dataPy/` | Distributed data collectors (tick, kline) that feed into wsServer. Each instance identified by `SERVER_NAME` and `MACHINE_INDEX` env vars |
 | `keyPy/` | Critical operations: position monitoring (`getBinancePosition`, `positionRisk`, `wsPosition`), stop-loss (`makerStopLoss`), order timeout (`checkTimeoutOrders`), commission tracking |
 | `afterTrade/` | Post-trade data processing and OSS upload for frontend display |
 | `react-front/` | React frontend (webpack, antd, echarts, mobx). Reads data from Aliyun OSS |
@@ -82,7 +82,7 @@ uv run python run_web_server.py
 # Remote deployment still uses shebang (#!/usr/bin/env python3):
 nohup ./webServer.py >/dev/null &
 ```
-Preferred deployment: use `dataPy/uploadDataPy.py` to distribute and run across Aliyun servers, with automatic source file destruction after launch (security measure).
+Legacy deployment used `dataPy/uploadDataPy.py` (deprecated) to distribute across Aliyun servers. Current deployment via Dokploy (Docker).
 
 ### Database (PostgreSQL + SQLModel + Alembic)
 
@@ -120,7 +120,7 @@ npm run build      # production build
 
 - `simpleTrade.py` is a demo only (long when 1min gain >1%, close when 1min drop <-0.5%). Pay attention to `updateSymbolInfo()` for price/quantity precision handling
 - The `binance_f/` SDK is a modified fork — not the vanilla Binance SDK
-- Data collectors use Aliyun ECS naming conventions for auto-discovery (e.g., `tickToWs_1`, `tickToWs_2`). The `get_aliyun_private_ip_arr_by_name()` function in `infra_client.py` handles this
+- Data collectors are configured via environment variables (`SERVER_NAME`, `MACHINE_INDEX`, `TICK_INSTANCE_COUNT`) for multi-instance sharding
 - WebSocket channels A and B in `InfraClient` connect to the aggregation server at addresses configured in `.env` (`WS_ADDRESS_A`, `WS_ADDRESS_B`)
 - Configuration is managed via `.env` file (not committed to git). See `.env.example` for template
 - Binance API keys are configured in `.env` as `BINANCE_API_ARR` (JSON array supporting multiple keys for rate limit distribution)
