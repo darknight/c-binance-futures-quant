@@ -6,7 +6,6 @@ import json
 import random
 import time
 import requests
-import oss2
 import socket
 import decimal
 import datetime

@@ -13,7 +13,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "paramiko",
     "requests",
-    "oss2",
+    "boto3",
     "pydantic-settings>=2.13.1",
     "sqlmodel>=0.0.37",
     "alembic>=1.18.4",
