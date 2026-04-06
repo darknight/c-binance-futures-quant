@@ -1,0 +1,13 @@
+.venv/
+.env
+.git/
+__pycache__/
+*.pyc
+*.pyo
+react-front/node_modules/
+ws-server/target/
+.claude/
+docs/
+tests/
+*.md
+!pyproject.toml
