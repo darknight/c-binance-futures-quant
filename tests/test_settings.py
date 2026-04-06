@@ -35,6 +35,16 @@ def test_settings_no_aliyun_fields():
     assert not hasattr(s, "aliyun_point")
 
 
+def test_settings_has_r2_fields():
+    """R2 storage fields exist with correct defaults."""
+    s = _make_settings()
+    assert s.r2_account_id == ""
+    assert s.r2_access_key_id == ""
+    assert s.r2_access_key_secret == ""
+    assert s.r2_bucket_name == "zuibite-api"
+    assert s.r2_public_domain == ""
+
+
 def _make_settings():
     from settings import Settings
     return Settings(_env_file=None)

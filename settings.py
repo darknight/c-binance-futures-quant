@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     vol_rate_host_b: str = ""
     second_open_hosts: str = "[]"  # JSON array: ["10.0.0.1","10.0.0.2"]
 
+    # Cloudflare R2 (S3-compatible object storage)
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_access_key_secret: str = ""
+    r2_bucket_name: str = "zuibite-api"
+    r2_public_domain: str = ""  # e.g. "https://cdn.example.com"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
