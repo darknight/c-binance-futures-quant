@@ -12,8 +12,6 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
     "python-multipart>=0.0.20",
     "paramiko",
-    "aliyun-python-sdk-core",
-    "aliyun-python-sdk-ecs",
     "requests",
     "oss2",
     "pydantic-settings>=2.13.1",

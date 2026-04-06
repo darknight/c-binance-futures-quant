@@ -27,18 +27,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3e/09/da9f58eb38b4fdb97ba6523274fbf445ef6a06be64b433693da8307b4bec/aliyun-python-sdk-core-2.16.0.tar.gz", hash = "sha256:651caad597eb39d4fad6cf85133dffe92837d53bdf62db9d8f37dab6508bb8f9", size = 449555, upload-time = "2024-10-09T06:01:01.762Z" }
 
 [[package]]
-name = "aliyun-python-sdk-ecs"
-version = "4.24.82"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aliyun-python-sdk-core" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/be/3b/2ccc93b89f28b6d394ee3cdeddaf58d404b47fd9bfd44d10d584c7e2db85/aliyun-python-sdk-ecs-4.24.82.tar.gz", hash = "sha256:66de143670432aa87b2519b2280101832bd56cd84c21c0d6578a69e8304567e3", size = 79865, upload-time = "2025-04-15T10:09:11.002Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/37/e6/a7a417b05ecaaa2b87a81143883483e7c6a6dc32ceafc77960341c507c03/aliyun_python_sdk_ecs-4.24.82-py2.py3-none-any.whl", hash = "sha256:6829f3e7f82ae6786579f60da6d8637aaba4e32eafea005c38726b34eeee9631", size = 468523, upload-time = "2025-04-15T10:09:09.787Z" },
-]
-
-[[package]]
 name = "aliyun-python-sdk-kms"
 version = "2.16.5"
 source = { registry = "https://pypi.org/simple" }
@@ -149,8 +137,6 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
-    { name = "aliyun-python-sdk-core" },
-    { name = "aliyun-python-sdk-ecs" },
     { name = "apscheduler" },
     { name = "fastapi" },
     { name = "mysql-connector-python" },
@@ -175,8 +161,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.18.4" },
-    { name = "aliyun-python-sdk-core" },
-    { name = "aliyun-python-sdk-ecs" },
     { name = "apscheduler" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "mysql-connector-python" },
