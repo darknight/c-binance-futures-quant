@@ -27,7 +27,7 @@ PUBLIC_SERVER_IP = "http://"+settings.web_address+":8888/"
 
 PRIVATE_IP = FUNCTION_CLIENT.get_private_ip()
 
-SERVER_NAME = FUNCTION_CLIENT.getServerName()
+SERVER_NAME = FUNCTION_CLIENT.serverName
 
 
 BINANCE_API_KEY =""

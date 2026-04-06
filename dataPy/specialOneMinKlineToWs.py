@@ -139,7 +139,7 @@ def klineToWs(tradeSymbolObj):
 
 
 
-VOL_IP_A = FUNCTION_CLIENT.get_aliyun_private_ip_arr_by_name("volAndRate_1")[0]
+VOL_IP_A = settings.vol_rate_host_a
 print("VOL_IP_A:"+VOL_IP_A)
 
 CONDITION_AND_RATE_ARR_A = []
@@ -155,7 +155,7 @@ def getVolConditionFromMyServerA():
         ex = traceback.format_exc()
         print(ex)
 
-VOL_IP_B = FUNCTION_CLIENT.get_aliyun_private_ip_arr_by_name("volAndRate_2")[0]
+VOL_IP_B = settings.vol_rate_host_b
 
 CONDITION_AND_RATE_ARR_B = []
 

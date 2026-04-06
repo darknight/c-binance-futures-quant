@@ -14,9 +14,6 @@ FUNCTION_CLIENT = InfraClient(larkMsgSymbol="tickToWs",connectMysql =True)
 
 privateIP = FUNCTION_CLIENT.get_private_ip()
 
-# 此处是通过阿里云命名带有 tickToWs 后，如tickToWs_1,tickToWs_2,调用api进行搜索，如非阿里云需自行替换相关api，或者直接手动写入所有tickToWs服务器的私有地址
-TICK_PRIVATE_IP_ARR = FUNCTION_CLIENT.get_aliyun_private_ip_arr_by_name("tickToWs")
-
 with FUNCTION_CLIENT.get_session() as session:
     TRADE_SYMBOL_DATA = session.exec(
         select(TradeSymbol).where(TradeSymbol.status == "yes").order_by(TradeSymbol.id.asc())
@@ -99,8 +96,11 @@ for i in range(60):
     errorArr.append(0)
 
 
+TICK_INSTANCE_COUNT = settings.tick_instance_count
+TICK_MACHINE_INDEX = settings.machine_index
+
 nowMillisecondLimitAllArr = []
-for i in range(len(TICK_PRIVATE_IP_ARR)):
+for i in range(TICK_INSTANCE_COUNT):
     nowMillisecondLimitAllArr.append([])
 
 
@@ -108,16 +108,11 @@ oneServerOneSecondRequestsTime  = 8
 
 requestsLimitTs = 1000/oneServerOneSecondRequestsTime
 
-for a in range(len(TICK_PRIVATE_IP_ARR)):
+for a in range(TICK_INSTANCE_COUNT):
     for b in range(oneServerOneSecondRequestsTime):
-        nowMillisecondLimitAllArr[a].append([int(a*1000/len(TICK_PRIVATE_IP_ARR)/oneServerOneSecondRequestsTime+1000/oneServerOneSecondRequestsTime*b),int((a+1)*1000/len(TICK_PRIVATE_IP_ARR)/oneServerOneSecondRequestsTime+1000/oneServerOneSecondRequestsTime*b)])
+        nowMillisecondLimitAllArr[a].append([int(a*1000/TICK_INSTANCE_COUNT/oneServerOneSecondRequestsTime+1000/oneServerOneSecondRequestsTime*b),int((a+1)*1000/TICK_INSTANCE_COUNT/oneServerOneSecondRequestsTime+1000/oneServerOneSecondRequestsTime*b)])
 
-nowMillisecondLimitArrIndex = -1
-for i in range(len(TICK_PRIVATE_IP_ARR)):
-    if privateIP==TICK_PRIVATE_IP_ARR[i]:
-        nowMillisecondLimitArrIndex = i
-
-nowMillisecondLimitArr = nowMillisecondLimitAllArr[nowMillisecondLimitArrIndex]
+nowMillisecondLimitArr = nowMillisecondLimitAllArr[TICK_MACHINE_INDEX]
 
 FUNCTION_CLIENT.send_notify_limit_one_min("start")
 

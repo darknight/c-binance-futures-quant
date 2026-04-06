@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # encoding:utf-8
+# DEPRECATED: This SSH-based deployment tool is superseded by Dokploy container deployment.
+# Kept as reference only. Will be removed in a future cleanup.
 import re
 import urllib.request
 import urllib
@@ -13,11 +15,11 @@ from infra_client import InfraClient
 
 FUNCTION_CLIENT = InfraClient(larkMsgSymbol="uploadDataPy")
 
-TICK_PRIVATE_IP_ARR = FUNCTION_CLIENT.get_aliyun_private_ip_arr_by_name("tickToWs")
-
-ONE_MIN_PRIVATE_IP_ARR = FUNCTION_CLIENT.get_aliyun_private_ip_arr_by_name("oneMinKlineToWs_")
-
-SPECIAL_ONE_MIN_PRIVATE_IP_ARR = FUNCTION_CLIENT.get_aliyun_private_ip_arr_by_name("specialOneMinKlineToWs_")
+# DEPRECATED: These IP arrays were previously discovered via Aliyun ECS API.
+# Configure manually if you still need to use this script.
+TICK_PRIVATE_IP_ARR = []
+ONE_MIN_PRIVATE_IP_ARR = []
+SPECIAL_ONE_MIN_PRIVATE_IP_ARR = []
 
 IP_ARR = [TICK_PRIVATE_IP_ARR,ONE_MIN_PRIVATE_IP_ARR,SPECIAL_ONE_MIN_PRIVATE_IP_ARR]
 
