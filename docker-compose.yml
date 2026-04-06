@@ -1,0 +1,274 @@
+services:
+  # === Infrastructure ===
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: quant
+      POSTGRES_PASSWORD: quant
+      POSTGRES_DB: quant
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quant"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  ws-server:
+    build:
+      context: ./ws-server
+      dockerfile: Dockerfile
+    ports:
+      - "3698:3698"
+    restart: unless-stopped
+
+  # === API ===
+
+  web-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python run_web_server.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WS_ADDRESS_A: ws://ws-server:3698
+      WEB_ADDRESS: web-server
+      CANCEL_WEB_ADDRESS: web-server
+    ports:
+      - "8888:8888"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ws-server:
+        condition: service_started
+    restart: unless-stopped
+
+  # === Data Collectors ===
+
+  tick-to-ws:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python dataPy/tickToWs.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WS_ADDRESS_A: ws://ws-server:3698
+      SERVER_NAME: tickToWs_0
+      MACHINE_INDEX: "0"
+      TICK_INSTANCE_COUNT: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ws-server:
+        condition: service_started
+    restart: unless-stopped
+
+  one-min-kline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python dataPy/oneMinKlineToWs.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WS_ADDRESS_A: ws://ws-server:3698
+      SERVER_NAME: oneMinKlineToWs_0
+      MACHINE_INDEX: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ws-server:
+        condition: service_started
+    restart: unless-stopped
+
+  special-kline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python dataPy/specialOneMinKlineToWs.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WS_ADDRESS_A: ws://ws-server:3698
+      SERVER_NAME: specialOneMinKlineToWs_0
+      MACHINE_INDEX: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ws-server:
+        condition: service_started
+    restart: unless-stopped
+
+  # === Trading ===
+
+  simple-trade:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python simpleTrade.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WS_ADDRESS_A: ws://ws-server:3698
+      WEB_ADDRESS: web-server
+      CANCEL_WEB_ADDRESS: web-server
+      SERVER_NAME: secondOpen_0
+      MACHINE_INDEX: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ws-server:
+        condition: service_started
+      web-server:
+        condition: service_started
+    restart: unless-stopped
+
+  # === Risk Control ===
+
+  get-position:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python keyPy/getBinancePosition.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WS_ADDRESS_A: ws://ws-server:3698
+      SERVER_NAME: getBinancePosition_0
+      MACHINE_INDEX: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ws-server:
+        condition: service_started
+    restart: unless-stopped
+
+  check-timeout:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python keyPy/checkTimeoutOrders.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WEB_ADDRESS: web-server
+      CANCEL_WEB_ADDRESS: web-server
+      SERVER_NAME: checkTimeoutOrders_0
+      MACHINE_INDEX: "0"
+      SECOND_OPEN_HOSTS: '["simple-trade"]'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  commission:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python keyPy/commission.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      SERVER_NAME: commission_0
+      MACHINE_INDEX: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ws-position:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python keyPy/wsPosition.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      SERVER_NAME: wsPosition_0
+      MACHINE_INDEX: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  maker-stop-loss:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python keyPy/makerStopLoss.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      SERVER_NAME: makerStopLoss_0
+      MACHINE_INDEX: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  position-risk:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python keyPy/positionRisk.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      SERVER_NAME: positionRisk_0
+      MACHINE_INDEX: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # === Post-Trade ===
+
+  web-oss-update:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python afterTrade/webOssUpdate.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  position-record:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python afterTrade/positionRecord.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WS_ADDRESS_A: ws://ws-server:3698
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ws-server:
+        condition: service_started
+    restart: unless-stopped
+
+  trades-update:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uv run python afterTrade/tradesUpdate.py
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
