@@ -228,7 +228,7 @@ class Show extends Component {
         let nowTs = parseInt(new Date().getTime()) - 60000
         let lastMinTime = turnTsToTime(nowTs,"1m")
         console.error(lastMinTime)
-        let url ="https://zuibite-api.oss-cn-hongkong.aliyuncs.com/investor/"+lastMinTime+".json?"+Math.random()
+        let url =CDN_BASE_URL + "/investor/"+lastMinTime+".json?"+Math.random()
         let request = new XMLHttpRequest();
         request.open("get", url);/*设置请求方法与路径*/
         request.setRequestHeader("Cache-Control","no-cache");
@@ -248,7 +248,7 @@ class Show extends Component {
     getQuantData = ()=>{
         let nowTs = parseInt(new Date().getTime()) - 60000
         let lastMinTime = turnTsToTime(nowTs,"1m")
-        let url ="https://zuibite-api.oss-cn-hongkong.aliyuncs.com/cQuant/"+lastMinTime+".json?"+Math.random()
+        let url =CDN_BASE_URL + "/cQuant/"+lastMinTime+".json?"+Math.random()
         let request = new XMLHttpRequest();
         request.open("get", url);/*设置请求方法与路径*/
         request.setRequestHeader("Cache-Control","no-cache");
@@ -410,7 +410,7 @@ class Show extends Component {
 
     getDayIncomeData = ()=>{
         let nowTs = parseInt(new Date().getTime()) - 60000
-        let url ="https://zuibite-api.oss-cn-hongkong.aliyuncs.com/cQuant_day_income/data.json?"+Math.random()
+        let url =CDN_BASE_URL + "/cQuant_day_income/data.json?"+Math.random()
         let request = new XMLHttpRequest();
         request.open("get", url);/*设置请求方法与路径*/
         request.setRequestHeader("Cache-Control","no-cache");
@@ -442,7 +442,7 @@ class Show extends Component {
     }
     getPositionRecord = ()=>{
         let nowTs = parseInt(new Date().getTime()) - 60000
-        let url ="https://zuibite-api.oss-cn-hongkong.aliyuncs.com/cQuant_change/"+this.state.historyTableType+"Arr.json?"+Math.random()
+        let url =CDN_BASE_URL + "/cQuant_change/"+this.state.historyTableType+"Arr.json?"+Math.random()
         let request = new XMLHttpRequest();
         request.open("get", url);/*设置请求方法与路径*/
         request.setRequestHeader("Cache-Control","no-cache");

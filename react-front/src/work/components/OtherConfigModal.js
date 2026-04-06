@@ -34,7 +34,7 @@ import {
 import {modifyOtherConfig} from "../actions";
 import {publicServerURL} from "../constants/serverURL";
 
-const audio = new Audio("https://zuibite-api.oss-cn-hongkong.aliyuncs.com/goals.mp3");
+const audio = new Audio(CDN_BASE_URL + "/goals.mp3");
 const { Option } = Select;
 const { TextArea } = Input;
 const { Panel } = Collapse;

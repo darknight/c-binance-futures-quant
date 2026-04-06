@@ -39,7 +39,8 @@ console.log(process.env.NODE_ENV)
 const pluginsPublic = [
     new ExtendedDefinePlugin({
         //全局变量
-        CONFIG_NODE_ENV: process.env.NODE_ENV
+        CONFIG_NODE_ENV: process.env.NODE_ENV,
+        CDN_BASE_URL: process.env.QUANT_CDN_URL || ''
     }),
     new HtmlWebpackPlugin({
         template: path.join(__dirname, '/src/index.ejs'), // Load a custom template
@@ -51,7 +52,8 @@ const pluginsPublic = [
         dev_port: dev_port,
         dns: dns,
         url: PUBLIC_PATH,
-        pro: process.env.NODE_ENV
+        pro: process.env.NODE_ENV,
+        cdnBaseUrl: process.env.QUANT_CDN_URL || ''
     }),
     // new BundleAnalyzerPlugin(),
     new MiniCssExtractPlugin({

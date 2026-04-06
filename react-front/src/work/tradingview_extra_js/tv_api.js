@@ -382,7 +382,7 @@ var TVjsApi = (function(){
 
         let request = new XMLHttpRequest();
 
-        request.open("get", "https://zuibite-api.oss-cn-hongkong.aliyuncs.com/klineTest.json");/*设置请求方法与路径*/
+        request.open("get", CDN_BASE_URL + "/klineTest.json");/*设置请求方法与路径*/
         request.setRequestHeader("Cache-Control","no-cache");
         request.setRequestHeader("Access-Control-Allow-Origin","*");
         request.setRequestHeader("Access-Control-Allow-Methods","get,post,put,delete");
@@ -394,7 +394,7 @@ var TVjsApi = (function(){
                 this.onMessage(data)
                 let tradeRequest = new XMLHttpRequest();
 
-                tradeRequest.open("get", "https://zuibite-api.oss-cn-hongkong.aliyuncs.com/tradeTest.json");/*设置请求方法与路径*/
+                tradeRequest.open("get", CDN_BASE_URL + "/tradeTest.json");/*设置请求方法与路径*/
                 tradeRequest.setRequestHeader("Cache-Control","no-cache");
                 tradeRequest.setRequestHeader("Access-Control-Allow-Origin","*");
                 tradeRequest.setRequestHeader("Access-Control-Allow-Methods","get,post,put,delete");
