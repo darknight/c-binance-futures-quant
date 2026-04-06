@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Binance Futures quantitative trading framework"
 requires-python = ">=3.14"
 dependencies = [
-    "mysql-connector-python",
     "websocket-client",
     "numpy",
     "APScheduler",

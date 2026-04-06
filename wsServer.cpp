@@ -1,3 +1,5 @@
+// DEPRECATED: This file is kept as reference only.
+// The active WebSocket server is now ws-server/ (Rust).
 //commonGame
 #include<sstream>
 #include<fstream> // 标准库文件IO部分的头文件
