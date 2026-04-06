@@ -9,11 +9,6 @@ from datetime import datetime as dt, timezone
 from websocket import create_connection
 from settings import settings
 from sqlmodel import create_engine
-from aliyunsdkcore.client import AcsClient
-from aliyunsdkcore.request import CommonRequest
-from aliyunsdkcore.acs_exception.exceptions import ClientException
-from aliyunsdkcore.acs_exception.exceptions import ServerException
-from aliyunsdkecs.request.v20140526.DescribeInstancesRequest import DescribeInstancesRequest
 
 
 class InfraClient(object):
@@ -44,10 +39,13 @@ class InfraClient(object):
 
         self.updateMachineStatusTs = 0
 
-        oss_auth = oss2.Auth(settings.aliyun_api_key, settings.aliyun_api_secret)
-        self.oss_bucket = oss2.Bucket(oss_auth, 'http://oss-cn-hongkong.aliyuncs.com', 'zuibite-api')
+        # TODO(Phase 2): Re-enable OSS init after aliyun_api_key/aliyun_api_secret
+        # are replaced with a new OSS-specific config approach.
+        # oss_auth = oss2.Auth(settings.aliyun_api_key, settings.aliyun_api_secret)
+        # self.oss_bucket = oss2.Bucket(oss_auth, 'http://oss-cn-hongkong.aliyuncs.com', 'zuibite-api')
+        self.oss_bucket = None
 
-        self.serverName = self.getServerName()
+        self.serverName = settings.server_name
 
     def send_notify(self, content):
         """发送通知消息（通过 Telegram）"""
@@ -186,56 +184,6 @@ class InfraClient(object):
 
         return result
 
-    def get_aliyun_public_ip_arr_by_name(self, name):
-        publicIPArr = []
-        nowPage = 1
-        emptyReq = False
-        while not emptyReq:
-            client = AcsClient(settings.aliyun_api_key, settings.aliyun_api_secret, settings.aliyun_point)
-            client.add_endpoint(settings.aliyun_point, 'Ecs', "ecs." + settings.aliyun_point + ".aliyuncs.com")
-            request = DescribeInstancesRequest()
-            request.set_PageNumber(nowPage)
-            request.set_PageSize(100)
-            request.set_accept_format('json')
-            instanceInfoArr = client.do_action_with_exception(request)
-            instanceInfoArr = json.loads(str(instanceInfoArr, encoding='utf-8'))
-
-            instanceInfoArr = instanceInfoArr["Instances"]["Instance"]
-            if len(instanceInfoArr) == 0:
-                emptyReq = True
-            else:
-                for i in range(len(instanceInfoArr)):
-                    if instanceInfoArr[i]["InstanceName"].find(name) >= 0:
-                        publicIPArr.append(instanceInfoArr[i]["PublicIpAddress"]["IpAddress"][0])
-
-            nowPage = nowPage + 1
-        return publicIPArr
-
-    def get_aliyun_private_ip_arr_by_name(self, name):
-        privateIPArr = []
-        nowPage = 1
-        emptyReq = False
-        while not emptyReq:
-            client = AcsClient(settings.aliyun_api_key, settings.aliyun_api_secret, settings.aliyun_point)
-            client.add_endpoint(settings.aliyun_point, 'Ecs', "ecs." + settings.aliyun_point + ".aliyuncs.com")
-            request = DescribeInstancesRequest()
-            request.set_PageNumber(nowPage)
-            request.set_PageSize(100)
-            request.set_accept_format('json')
-            instanceInfoArr = client.do_action_with_exception(request)
-            instanceInfoArr = json.loads(str(instanceInfoArr, encoding='utf-8'))
-
-            instanceInfoArr = instanceInfoArr["Instances"]["Instance"]
-            if len(instanceInfoArr) == 0:
-                emptyReq = True
-            else:
-                for i in range(len(instanceInfoArr)):
-                    if instanceInfoArr[i]["InstanceName"].find(name) >= 0:
-                        privateIPArr.append(instanceInfoArr[i]["VpcAttributes"]["PrivateIpAddress"]["IpAddress"][0])
-
-            nowPage = nowPage + 1
-        return privateIPArr
-
     def update_machine_status(self):
         now = int(time.time())
         if now - self.updateMachineStatusTs > 60:
@@ -316,35 +264,6 @@ class InfraClient(object):
             return readObj
         except Exception as e:
             print(e)
-
-    def getServerName(self):
-        serverName = ""
-        privateIP = ""
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(('8.8.8.8', 80))
-            privateIP = s.getsockname()[0]
-        finally:
-            s.close()
-        nowPage = 1
-        emptyReq = False
-        while serverName == "" and not emptyReq:
-            client = AcsClient(settings.aliyun_api_key, settings.aliyun_api_secret, settings.aliyun_point)
-            client.add_endpoint(settings.aliyun_point, 'Ecs', "ecs." + settings.aliyun_point + ".aliyuncs.com")
-            request = DescribeInstancesRequest()
-            request.set_PageNumber(nowPage)
-            request.set_PageSize(100)
-            request.set_accept_format('json')
-            instanceInfoArr = client.do_action_with_exception(request)
-            instanceInfoArr = json.loads(str(instanceInfoArr, encoding='utf-8'))
-            instanceInfoArr = instanceInfoArr["Instances"]["Instance"]
-            if len(instanceInfoArr) == 0:
-                emptyReq = True
-            for i in range(len(instanceInfoArr)):
-                if instanceInfoArr[i]["VpcAttributes"]["PrivateIpAddress"]["IpAddress"][0] == privateIP:
-                    serverName = instanceInfoArr[i]["InstanceName"]
-            nowPage = nowPage + 1
-        return serverName
 
     def begin_trade_record(self, volMultiple, standardRate, symbol, klineArr, nowOpenRate, machineNumber, direction, myTradeType, longsConditionA, shortsConditionA, shortsConditionB, btcNowOpenRate, ethNowOpenRate, clientBeginPrice, clientEndPrice):
         try:
