@@ -110,6 +110,31 @@ QUANT_CDN_URL=$QUANT_CDN_URL npm start          # dev server
 QUANT_CDN_URL=$QUANT_CDN_URL npm run build      # production build
 ```
 
+### Docker (all services)
+```bash
+# Build all images
+docker compose build
+
+# Start infrastructure first
+docker compose up -d postgres ws-server
+
+# Run database migrations
+docker compose run --rm web-server uv run alembic upgrade head
+
+# Start all services
+docker compose up -d
+
+# View logs
+docker compose logs -f web-server
+docker compose logs -f simple-trade
+
+# Stop all
+docker compose down
+
+# Stop and remove volumes (destroys database)
+docker compose down -v
+```
+
 ## Design Principles
 
 - Each Python module = one server + one IP, tuned to max Binance API rate limits
