@@ -73,7 +73,7 @@ API 基础 URL 通过 `VITE_API_URL` 环境变量注入（`.env` 文件，不提
   "oneDayProfit": 456.78,
   "systemStatus": "run",
   "systemUpdateTs": 1712345678,
-  "runTime": "3d 12h",
+  "runTime": 42,
   "t": 1712345678
 }
 ```
