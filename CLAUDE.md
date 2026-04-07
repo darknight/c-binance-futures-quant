@@ -34,11 +34,12 @@ Package management: uv (pyproject.toml + uv.lock)
 | `dataPy/` | Distributed data collectors (tick, kline) that feed into wsServer. Each instance identified by `SERVER_NAME` and `MACHINE_INDEX` env vars |
 | `keyPy/` | Critical operations: position monitoring (`getBinancePosition`, `positionRisk`, `wsPosition`), stop-loss (`makerStopLoss`), order timeout (`checkTimeoutOrders`), commission tracking |
 | `afterTrade/` | Post-trade data processing and OSS upload for frontend display |
-| `react-front/` | React frontend (webpack, antd, echarts, mobx). Reads data from Cloudflare R2 |
+| `react-front/` | **DEPRECATED** — Legacy React 16 frontend. Replaced by `web-front/`. Kept for reference until new frontend is stable |
+| `web-front/` | React 19 frontend dashboard (Vite, TypeScript, antd 5, Zustand, ECharts). Fetches data from FastAPI backend API |
 | `updateSymbol/` | SQL scripts and Python for managing the `trade_symbol` table in PostgreSQL |
 | `tool/` | Speed test utilities for Binance API and tick data |
 | `ws-server/` | Rust WebSocket aggregation server (tokio + tokio-tungstenite). Replaces wsServer.cpp |
-| `web_server/` | FastAPI HTTP server: `app.py` (app factory), `state.py` (shared state), `binance_helpers.py` (Binance API utils), `routers/` (8 route modules) |
+| `web_server/` | FastAPI HTTP server: `app.py` (app factory), `state.py` (shared state), `binance_helpers.py` (Binance API utils), `routers/` (9 route modules incl. `dashboard.py` for frontend KPI/profit APIs) |
 | `app/` | Python package: `database.py` (SQLAlchemy engine + session factory), `app/models/` (15 SQLModel models) |
 | `alembic/` | Alembic migration environment and versioned migration scripts |
 | `tests/` | Test suite: `test_database.py`, `test_models.py` |
@@ -99,7 +100,7 @@ uv run alembic revision --autogenerate -m "description"
 uv run pytest tests/ -v
 ```
 
-### React Frontend
+### Legacy React Frontend (react-front/) — DEPRECATED
 ```bash
 cd react-front
 npm install
@@ -108,6 +109,16 @@ npm install
 source ../.env
 QUANT_CDN_URL=$QUANT_CDN_URL npm start          # dev server
 QUANT_CDN_URL=$QUANT_CDN_URL npm run build      # production build
+```
+
+### New React Frontend (web-front/)
+```bash
+cd web-front
+npm install
+
+# VITE_API_URL is required — set it in .env or pass directly
+VITE_API_URL=http://localhost:8000 npm run dev    # dev server
+VITE_API_URL=http://localhost:8000 npm run build  # production build
 ```
 
 ### Docker (all services)
