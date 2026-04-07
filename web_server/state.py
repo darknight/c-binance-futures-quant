@@ -119,6 +119,15 @@ class AppState:
     big_loss_trades_arr: list = field(default_factory=list)
     update_big_loss_trades_data_ts: int = 0
 
+    # Dashboard summary cache
+    dashboard_summary_data: dict = field(default_factory=dict)
+    dashboard_summary_update_ts: int = 0
+
+    # Profit by symbol cache
+    profit_by_symbol_data: dict = field(default_factory=dict)
+    profit_by_symbol_update_ts: int = 0
+    profit_by_symbol_today_ts: int = 0
+
     # Begin trade record throttle
     symbol_last_insert_ts_obj: dict = field(default_factory=dict)
 
