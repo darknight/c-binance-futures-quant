@@ -7,3 +7,5 @@ __pycache__/
 .env
 user_config.json
 ws-server/target/
+web-front/node_modules/
+web-front/dist/
