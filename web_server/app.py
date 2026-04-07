@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from infra_client import InfraClient
 from web_server.state import AppState
 from web_server.binance_helpers import update_symbol_info
-from web_server.routers import config, market, orders, trading, income, records, status, account
+from web_server.routers import config, market, orders, trading, income, records, status, account, dashboard
 
 
 @asynccontextmanager
@@ -45,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(records.router)
     app.include_router(status.router)
     app.include_router(account.router)
+    app.include_router(dashboard.router)
 
     @app.post("/health")
     def health():
