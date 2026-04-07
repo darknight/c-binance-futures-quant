@@ -1,5 +1,7 @@
 import json
 import time
+from decimal import Decimal
+
 import requests
 from datetime import datetime as _dt
 
@@ -10,6 +12,8 @@ class UTCEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, _dt):
             return obj.isoformat()
+        if isinstance(obj, Decimal):
+            return float(obj)
         return super().default(obj)
 
 
