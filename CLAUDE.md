@@ -173,4 +173,5 @@ docker compose down -v
 - **Acceptance criteria**: Every code change must compile, pass all tests, and run correctly locally before considering it done
 - **CLAUDE.md sync**: After every code change, check if CLAUDE.md needs updating. If so, update and commit together
 - **Git commits**: Use the current git user directly. Do NOT add `Co-authored-by` or similar trailers. Follow [Conventional Commits](https://www.conventionalcommits.org/) format (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`)
-- **No merge commits**: The `develop` and `main` branches have GitHub repository rules that forbid merge commits. Always use `git rebase` instead of `git merge` when integrating branches
+- **Branch strategy**: This is a forked project. `main` branch tracks the original author's code — never push our changes to `main`. All our work goes to `develop` (the default branch). PRs should target `develop`, not `main`
+- **No merge commits**: The `develop` branch has GitHub repository rules that forbid merge commits. Always use `git rebase` instead of `git merge` when integrating branches
