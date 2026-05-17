@@ -156,7 +156,7 @@ def seed_trade_records(session: Session, now: int) -> None:
                 status="closed",
                 direction="longs" if idx % 2 == 0 else "shorts",
                 vol_info={"source": "demo"},
-                extra_info={"seed": "dashboard"},
+                extra_info={"seed": "dashboard", "priceRate": 1.8 + idx * 0.7},
             )
         )
 

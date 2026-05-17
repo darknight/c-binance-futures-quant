@@ -25,6 +25,8 @@ export interface BigLossTradeItem {
   time: string
   profit: number
   profitPercentByBalance: string
+  priceRate: string
+  direction: string
 }
 
 export interface BigLossResponse {
@@ -102,6 +104,6 @@ export interface DayIncomeChartData {
   updateTime: string
 }
 
-export type ChartRangeType = 'lastOneDay' | 'lastSevenDays' | 'lastOneMonth' | 'all'
+export type ChartRangeType = 'fromLastInvestor' | 'lastOneDay' | 'lastSevenDays' | 'lastOneMonth' | 'all'
 
 export type DayIncomeChartType = 'bar' | 'line'

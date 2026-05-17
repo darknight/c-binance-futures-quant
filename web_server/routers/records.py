@@ -95,6 +95,8 @@ def get_big_loss_trades(request: Request):
                 "time": state.infra_client.turn_ts_to_time(row.end_ts),
                 "profit": row.profit,
                 "profitPercentByBalance": str(abs(int(row.profit_percent_by_balance * 100) / 100)) + "%",
+                "priceRate": str(abs(int(float((row.extra_info or {}).get("priceRate", 0)) * 100) / 100)) + "%",
+                "direction": "做空" if row.direction == "shorts" else "做多",
             })
     return json.loads(json_dumps({"s": "ok", "d": state.big_loss_trades_arr}))
 

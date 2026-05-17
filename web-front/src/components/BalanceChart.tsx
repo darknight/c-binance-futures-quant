@@ -5,6 +5,7 @@ import { useThemeStore } from '../stores/useThemeStore'
 import type { ChartRangeType } from '../types'
 
 const RANGE_OPTIONS: { value: ChartRangeType; label: string }[] = [
+  { value: 'fromLastInvestor', label: '参与者变化后' },
   { value: 'lastOneDay', label: '最近一天' },
   { value: 'lastSevenDays', label: '最近七天' },
   { value: 'lastOneMonth', label: '最近一个月' },

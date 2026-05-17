@@ -77,6 +77,9 @@ export function getRangeTimestamps(range: ChartRangeType): { beginTs: number; en
   const endTs = now
   let beginTs: number
   switch (range) {
+    case 'fromLastInvestor':
+      beginTs = Math.floor(dayjs('2023-07-20 00:00:00').valueOf() / 1000)
+      break
     case 'lastOneDay':
       beginTs = now - 86400
       break

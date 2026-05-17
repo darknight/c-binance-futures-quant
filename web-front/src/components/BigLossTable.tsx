@@ -27,6 +27,7 @@ const useBigLossStore = create<BigLossState>((set) => ({
 const columns: ColumnsType<BigLossTradeItem> = [
   { title: '交易对', dataIndex: 'symbol', key: 'symbol' },
   { title: '时间', dataIndex: 'time', key: 'time' },
+  { title: '方向', dataIndex: 'direction', key: 'direction' },
   {
     title: '收益金额',
     dataIndex: 'profit',
@@ -39,6 +40,12 @@ const columns: ColumnsType<BigLossTradeItem> = [
     key: 'profitPercentByBalance',
     sorter: (a, b) =>
       parseFloat(a.profitPercentByBalance) - parseFloat(b.profitPercentByBalance),
+  },
+  {
+    title: '价格变化',
+    dataIndex: 'priceRate',
+    key: 'priceRate',
+    sorter: (a, b) => parseFloat(a.priceRate) - parseFloat(b.priceRate),
   },
 ]
 
