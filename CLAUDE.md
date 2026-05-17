@@ -85,9 +85,46 @@ nohup ./webServer.py >/dev/null &
 ```
 Legacy deployment used `dataPy/uploadDataPy.py` (deprecated) to distribute across Aliyun servers. Current deployment via Dokploy (Docker).
 
+### Local Full-Stack Development (Podman)
+
+Use this flow when Docker is not installed locally. The checked-in `.env.example` matches these defaults; copy it to `.env` if needed. `.env` is local-only and must not be committed.
+
+```bash
+# Start local PostgreSQL 18 on localhost:15432
+podman run -d \
+  --name quant-postgres \
+  -e POSTGRES_USER=quant \
+  -e POSTGRES_PASSWORD=quant \
+  -e POSTGRES_DB=quant \
+  -p 15432:5432 \
+  postgres:18-alpine
+
+# If the container already exists
+podman start quant-postgres
+
+# Apply schema migrations
+uv run alembic upgrade head
+
+# Optional: seed deterministic dashboard demo data for frontend development
+uv run python scripts/seed_demo_dashboard_data.py
+
+# Start FastAPI backend on http://localhost:8888
+uv run python run_web_server.py
+```
+
+In another terminal:
+
+```bash
+cd web-front
+npm install
+VITE_API_URL=http://localhost:8888 npm run dev
+```
+
+Open `http://127.0.0.1:5173/`. The backend startup calls Binance `exchangeInfo`; local startup requires outbound access to `https://fapi.binance.com`.
+
 ### Database (PostgreSQL + SQLModel + Alembic)
 
-Stack: PostgreSQL, SQLAlchemy/SQLModel ORM, Alembic migrations. Configure `DATABASE_URL` in `.env` (default: `postgresql+psycopg://localhost:5432/quant`).
+Stack: PostgreSQL, SQLAlchemy/SQLModel ORM, Alembic migrations. Configure `DATABASE_URL` in `.env` (local Podman default: `postgresql+psycopg://quant:quant@localhost:15432/quant`).
 
 ```bash
 # Apply all pending migrations
@@ -117,8 +154,8 @@ cd web-front
 npm install
 
 # VITE_API_URL is required — set it in .env or pass directly
-VITE_API_URL=http://localhost:8000 npm run dev    # dev server
-VITE_API_URL=http://localhost:8000 npm run build  # production build
+VITE_API_URL=http://localhost:8888 npm run dev    # dev server
+VITE_API_URL=http://localhost:8888 npm run build  # production build
 ```
 
 ### Docker (all services)
@@ -131,6 +168,9 @@ docker compose up -d postgres ws-server
 
 # Run database migrations
 docker compose run --rm web-server uv run alembic upgrade head
+
+# Optional: seed deterministic dashboard demo data
+docker compose run --rm web-server uv run python scripts/seed_demo_dashboard_data.py
 
 # Start all services
 docker compose up -d

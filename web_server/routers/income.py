@@ -86,7 +86,7 @@ def get_income_obj(request: Request):
             state.symbol_income_obj = symbol_income_obj
             state.income_lock = False
 
-    return json.loads(json.dumps({
+    return json.loads(json_dumps({
         "s": "ok", "i": state.income_obj, "n": int(time.time()), "d": state.symbol_income_obj,
     }))
 
