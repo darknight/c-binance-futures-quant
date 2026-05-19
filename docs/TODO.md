@@ -1,5 +1,31 @@
 # TODO
 
+## Modernization roadmap
+
+Current tracking doc: `docs/roadmap.md`.
+
+The high-level migration is no longer "rewrite everything". The current priority is to keep the modernized infrastructure stable while making the strategy/execution path testable before real trading.
+
+### Cognitive debt cleanup (DONE)
+
+- ~~Document the current main path in `README.md`: `uv`, PostgreSQL, FastAPI, Rust `ws-server`, `web-front`, Docker/Podman~~
+- ~~Replace the Vite template text in `web-front/README.md`~~
+- ~~Keep legacy entry points clearly marked: `webServer.py`, `wsServer.cpp`, `react-front/`, `dataPy/uploadDataPy.py`~~
+- ~~Record the next phases in `docs/roadmap.md`~~
+- ~~Clarify dashboard router coverage in web server tests~~
+
+### Local dry-run loop (NEXT)
+
+- Add a local smoke producer/consumer for `ws-server`
+- Add dry-run trading mode so strategies can emit order intent without calling Binance
+- Make `simpleTrade.py` run at least one complete dry-run loop
+
+### Strategy runner (FUTURE)
+
+- Extract market data adapter, execution adapter, and strategy interface from `simpleTrade.py`
+- Add strategy unit tests for signal generation
+- Add paper-trading PnL simulation before any real order path
+
 ## Remove unused User/Chat/Visitor system
 
 The project is single-user (self-use only). The multi-user login, chat, and visitor tracking features are unnecessary and should be fully removed.

@@ -1,3 +1,176 @@
+# c-binance-futures-quant
+
+Binance Futures quantitative trading framework. The current maintained path is a modernized stack:
+
+- Python services managed by `uv`
+- PostgreSQL + SQLModel + Alembic
+- FastAPI backend in `web_server/`
+- Rust WebSocket aggregation server in `ws-server/`
+- React 19 + Vite dashboard in `web-front/`
+- Docker Compose / Podman local development flow
+- Environment-based configuration via `.env`
+
+The project provides infrastructure for data collection, risk control, execution, and monitoring. It does not provide a production trading strategy. `simpleTrade.py` is only a demo strategy runner and should not be treated as profitable logic.
+
+## Current Architecture
+
+```text
+[Distributed Python Data Collectors] -> [Rust ws-server] -> [Trading Servers]
+  tick / kline / account / risk           in-memory hub       simpleTrade.py
+                                                                  |
+                                                                  v
+                                                        Binance Futures API
+
+[FastAPI web_server] -> PostgreSQL / dashboard APIs -> [web-front]
+```
+
+Key paths:
+
+| Path | Status | Purpose |
+| ---- | ------ | ------- |
+| `ws-server/` | Active | Rust WebSocket aggregation server replacing legacy `wsServer.cpp` |
+| `web_server/` | Active | FastAPI backend and control-plane APIs |
+| `web-front/` | Active | React 19 dashboard reading FastAPI APIs |
+| `infra_client.py` | Active | Shared infrastructure client for DB, WebSocket, Telegram, R2, Binance routing |
+| `settings.py` | Active | `.env`-backed pydantic settings |
+| `app/models/` | Active | SQLModel database models |
+| `alembic/` | Active | PostgreSQL schema migrations |
+| `dataPy/` | Active legacy style | Distributed data collectors; still script-style services |
+| `keyPy/` | Active legacy style | Position, balance, order timeout, stop-loss, commission, and risk services |
+| `simpleTrade.py` | Demo | Example trading server; not a strategy framework yet |
+| `webServer.py` | Deprecated | Legacy Bottle backend, kept as reference |
+| `wsServer.cpp` | Deprecated | Legacy C++ aggregation server, kept as protocol reference |
+| `react-front/` | Deprecated | Legacy React 16 frontend, kept until owner approves deletion |
+| `dataPy/uploadDataPy.py` | Deprecated | SSH/Aliyun deployment script, superseded by container deployment |
+
+## Local Development
+
+Install dependencies:
+
+```bash
+uv sync
+```
+
+Copy the environment template if needed:
+
+```bash
+cp .env.example .env
+```
+
+Start local PostgreSQL with Podman:
+
+```bash
+podman run -d \
+  --name quant-postgres \
+  -e POSTGRES_USER=quant \
+  -e POSTGRES_PASSWORD=quant \
+  -e POSTGRES_DB=quant \
+  -p 15432:5432 \
+  postgres:18-alpine
+```
+
+If the container already exists:
+
+```bash
+podman start quant-postgres
+```
+
+Apply migrations and optionally seed dashboard demo data:
+
+```bash
+uv run alembic upgrade head
+uv run python scripts/seed_demo_dashboard_data.py
+```
+
+Start the backend:
+
+```bash
+uv run python run_web_server.py
+```
+
+In another terminal, start the frontend:
+
+```bash
+cd web-front
+npm install
+VITE_API_URL=http://localhost:8888 npm run dev
+```
+
+Open `http://127.0.0.1:5173/`.
+
+Note: backend startup currently calls Binance `exchangeInfo`, so local startup needs outbound access to `https://fapi.binance.com`.
+
+## Rust WebSocket Server
+
+```bash
+cd ws-server
+cargo run -- --port 3698 --log-level debug
+cargo test
+cargo clippy --all-targets
+cargo fmt -- --check
+```
+
+Production build:
+
+```bash
+cd ws-server
+cargo build --release
+nohup ./target/release/ws-server --port 3698 --log-level info >/dev/null &
+```
+
+## Docker Compose
+
+```bash
+docker compose build
+docker compose up -d postgres ws-server
+docker compose run --rm web-server uv run alembic upgrade head
+docker compose run --rm web-server uv run python scripts/seed_demo_dashboard_data.py
+docker compose up -d
+```
+
+Useful log commands:
+
+```bash
+docker compose logs -f web-server
+docker compose logs -f simple-trade
+```
+
+Stop services:
+
+```bash
+docker compose down
+```
+
+Destroy local database volumes:
+
+```bash
+docker compose down -v
+```
+
+## Database
+
+Configure `DATABASE_URL` in `.env`. Local Podman default:
+
+```text
+postgresql+psycopg://quant:quant@localhost:15432/quant
+```
+
+Commands:
+
+```bash
+uv run alembic upgrade head
+uv run alembic revision --autogenerate -m "description"
+uv run pytest tests/ -v
+```
+
+## Roadmap
+
+See `docs/roadmap.md` for the current modernization roadmap. The next major work after documentation cleanup is a local dry-run loop: deterministic demo data, ws-server smoke producer/consumer, and a trading mode that produces order intent without calling Binance.
+
+## Legacy Upstream README
+
+The original upstream README is preserved below as historical architecture and trading-system context. Some details are now outdated: Aliyun deployment, MySQL, Bottle `webServer.py`, React 16 `react-front/`, C++ `wsServer.cpp`, OSS frontend delivery, and Feishu notification are no longer the maintained path.
+
 [ENGLISH](https://github.com/Melelery/c-binance-future-quant/blob/main/README_EN.md)
 # 简介
 
@@ -407,4 +580,3 @@ if allOneDayProfit<=-3000:
 我大部分精力关注在数据录入，交易的性能优化，而忽略交易后数据拉取分析这一块的优化，这一块只要最后的结果是对的即可。
 
 交易后的过程，消耗了1个性能还是100个性能，只要没有达到我硬件的峰值，我都不会去寻求改变
-

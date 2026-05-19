@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock
 from web_server.state import AppState
-from web_server.routers import config, market, orders, trading, income, records, status, account
+from web_server.routers import config, market, orders, trading, income, records, status, account, dashboard
 
 
 def _make_test_app():
@@ -114,7 +114,11 @@ def test_get_state_config():
 
 
 def _create_test_app():
-    """Create a test app with mocked lifespan (no Binance/DB calls)."""
+    """Create a test app with mocked lifespan (no Binance/DB calls).
+
+    This mirrors the production router registration in web_server.app.
+    Dashboard endpoint behavior is covered separately in test_dashboard.py.
+    """
     app = FastAPI()
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -131,6 +135,7 @@ def _create_test_app():
     app.include_router(records.router)
     app.include_router(status.router)
     app.include_router(account.router)
+    app.include_router(dashboard.router)
 
     @app.post("/health")
     def health():
@@ -219,6 +224,8 @@ def test_all_routes_registered():
         "/update_loss_limit_time",
         "/get_watch_info",
         "/get_one_day_rate",
+        "/get_dashboard_summary",
+        "/get_profit_by_symbol",
     ]
     for ep in expected_endpoints:
         assert ep in routes, f"Missing route: {ep}"

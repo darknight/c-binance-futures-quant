@@ -1,73 +1,74 @@
-# React + TypeScript + Vite
+# web-front
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Active React dashboard for the Binance Futures quant framework.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 19
+- TypeScript
+- Vite
+- antd
+- Zustand
+- ECharts
 
-## React Compiler
+This frontend replaces the deprecated `react-front/` app. The maintained data path is FastAPI (`web_server/`) instead of the old OSS JSON snapshot flow.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Configuration
 
-## Expanding the ESLint configuration
+Set the backend API base URL with `VITE_API_URL`:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+VITE_API_URL=http://localhost:8888 npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+For local development, start the backend first from the repository root:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+uv run python run_web_server.py
 ```
+
+## Commands
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the dev server:
+
+```bash
+VITE_API_URL=http://localhost:8888 npm run dev
+```
+
+Build for production:
+
+```bash
+VITE_API_URL=http://localhost:8888 npm run build
+```
+
+Lint:
+
+```bash
+npm run lint
+```
+
+Preview a production build:
+
+```bash
+npm run preview
+```
+
+## API Usage
+
+The dashboard expects the FastAPI backend to expose:
+
+- `/get_dashboard_summary`
+- `/get_profit_by_symbol`
+- legacy-compatible position, income, status, and record endpoints used by existing components
+
+The backend currently calls Binance `exchangeInfo` during startup. Local development therefore needs outbound access to `https://fapi.binance.com`, unless that startup path is mocked or made optional in a later phase.
+
+## Legacy Frontend
+
+`../react-front/` is kept as reference only. Do not add new dashboard features there.
