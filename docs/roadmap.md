@@ -40,16 +40,47 @@ Deferred owner decisions:
 - Decide whether `services/post_trade/webOssUpdate.py` remains as static snapshot publishing or is replaced by FastAPI/dashboard-only flows.
 - Decide whether `web_server/`, `app/`, and shared Python helpers should later move under a packaged backend namespace.
 
-## Phase 2: Local dry-run loop
+## Phase 2A: Deterministic Local Loop
 
-Goal: run a full local loop without real Binance orders.
+Goal: prove the internal trading loop can run predictably without real Binance data or orders.
+
+Required scope:
+
+- Add a `ws-server` smoke producer/consumer that writes controlled tick/kline/position/balance data through the real websocket protocol and verifies the `B` snapshot format.
+- Add a dry-run runner that reads the real `ws-server` snapshot and emits order intent without calling Binance.
+- Use a deterministic demo rule for the first runner instead of refactoring `services/trading/simple_trade.py` in place.
+- Emit dry-run order intents as structured JSONL on stdout so command-line runs, Docker logs, and tests can inspect the same output.
+
+First acceptance scenario:
+
+- One fake symbol: `BTCUSDT`
+- Empty position
+- Available balance
+- No ban on `BTCUSDT`
+- One deterministic 1m decline from fake kline/tick data
+- Expected dry-run output: one `open_long` **Order Intent** for `BTCUSDT`
+
+Explicitly out of scope for the first slice:
+
+- Binance production or testnet connectivity.
+- Simulated fills, PnL, or paper-trading account state.
+- Required database, FastAPI, or frontend dashboard persistence for dry-run intents.
+- Refactoring the full `services/trading/simple_trade.py` strategy flow.
+- Multi-symbol, short-side, close-position, stop-loss, stop-profit, and insufficient-balance scenarios.
+
+Optional follow-up:
+
+- Persist, query, and display dry-run intents once the deterministic local loop is stable.
+
+## Phase 2B: Binance Testnet Adapter
+
+Goal: validate the external exchange boundary after the deterministic local loop is stable.
 
 Suggested tasks:
 
-- Add a `ws-server` smoke producer/consumer that writes tick/kline/position/balance data and verifies the `B` snapshot format.
-- Add a dry-run trading mode that records order intent instead of calling Binance.
-- Make `services/trading/simple_trade.py` run at least one complete dry-run loop.
-- Provide one command or Makefile target for PostgreSQL, migrations, demo data, backend, and frontend.
+- Add explicit Binance Futures testnet configuration that cannot silently point at production.
+- Validate market/account/order API behavior against testnet using small controlled scenarios.
+- Keep real trading disabled by default even when the testnet adapter is available.
 
 ## Phase 3: Strategy runner
 

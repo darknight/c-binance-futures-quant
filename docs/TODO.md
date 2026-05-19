@@ -15,11 +15,18 @@ The high-level migration is no longer "rewrite everything". The current priority
 - ~~Record the next phases in `docs/roadmap.md`~~
 - ~~Clarify dashboard router coverage in web server tests~~
 
-### Local dry-run loop (NEXT)
+### Phase 2A: Deterministic Local Loop (NEXT)
 
-- Add a local smoke producer/consumer for `ws-server`
-- Add dry-run trading mode so strategies can emit order intent without calling Binance
-- Make `services/trading/simple_trade.py` run at least one complete dry-run loop
+- Add a local smoke producer/consumer for `ws-server` that writes controlled fake data through the real protocol
+- Add a dry-run runner with a deterministic demo rule so strategies can emit order intent without calling Binance
+- Emit dry-run order intents as structured JSONL on stdout without requiring database/API/frontend persistence
+- First acceptance scenario: `BTCUSDT` empty position plus deterministic 1m decline emits one `open_long` order intent
+
+### Phase 2B: Binance Testnet Adapter (FUTURE)
+
+- Add explicit Binance Futures testnet configuration that cannot silently point at production
+- Validate external market/account/order API behavior against testnet
+- Keep real trading disabled by default even when testnet support exists
 
 ### Strategy runner (FUTURE)
 
