@@ -1,12 +1,12 @@
 # INSIGHT.md
 
-本文记录我对当前仓库重构状态、交易系统架构、已达成目标和后续切入点的理解。时间点：2026-05-18。
+本文记录我对当前仓库重构状态、交易系统架构、已达成目标和后续切入点的理解。时间点：2026-05-19。
 
 ## 先给结论
 
 这个项目已经从“原作者的阿里云 + MySQL + Bottle + React 16 + C++ wsServer + 手工分发脚本”明显推进到了“PostgreSQL/SQLModel + FastAPI + React 19/Vite + Rust ws-server + Docker Compose + env 配置”的方向。
 
-目前最重要的事实是：**基础设施现代化已经完成了大半，但策略层和实盘运行闭环还没有真正产品化**。也就是说，项目现在更像一个“现代化后的交易系统骨架和仪表盘”，还不是一套可以放心部署、观测、回测、灰度、实盘放量的策略平台。
+目前最重要的事实是：**基础设施现代化和第一轮认知负债清理已经完成了大半，但策略层和实盘运行闭环还没有真正产品化**。也就是说，项目现在更像一个“现代化后的交易系统骨架和仪表盘”，还不是一套可以放心部署、观测、回测、灰度、实盘放量的策略平台。
 
 后续最合理的切入点不是继续大面积重构，而是先把系统切成三层：
 
@@ -27,16 +27,16 @@
 - Python 包管理迁到 `uv`，依赖定义在 `pyproject.toml` 和 `uv.lock`。
 - 配置从旧 `config.py` 迁到 `settings.py` + `.env`，使用 `pydantic-settings`。
 - 数据库从 MySQL 迁到 PostgreSQL，ORM 使用 SQLModel/SQLAlchemy，迁移由 Alembic 管理。
-- 旧 Bottle `webServer.py` 已被 `web_server/` 下的 FastAPI 模块化实现替代。
-- 前端从 `react-front/` 的 React 16 老项目迁到 `web-front/` 的 React 19 + Vite + TypeScript + antd 5 + Zustand + ECharts。
+- 旧 Bottle `legacy/webServer.py` 已被 `web_server/` 下的 FastAPI 模块化实现替代。
+- 前端从 `legacy/react-front/` 的 React 16 老项目迁到 `frontend/web-front/` 的 React 19 + Vite + TypeScript + antd 5 + Zustand + ECharts。
 - 测试体系已经有基础覆盖：settings、InfraClient、models、queries、web_server、dashboard。
 
 未完成/需收尾：
 
-- `webServer.py` 仍保留在仓库中，属于遗留参考，不应再作为主入口。
-- `react-front/` 仍保留。`docs/frontend-parity-audit.md` 已说明新前端覆盖了旧前端当前 active dashboard route，但还需要 owner decision 后才能删除。
-- README 仍大量描述旧架构，例如 C++、阿里云、OSS、MySQL、旧启动方式等。对新维护者会造成认知干扰。
-- `web-front/README.md` 还是 Vite 模板文档，需要替换成真实项目说明。
+- `legacy/webServer.py` 仍保留在仓库中，属于遗留参考，不应再作为主入口。
+- `legacy/react-front/` 仍保留。`docs/frontend-parity-audit.md` 已说明新前端覆盖了旧前端当前 active dashboard route，但还需要 owner decision 后才能删除。
+- README 已优先描述当前架构，旧架构内容只作为 historical context 保留。
+- `frontend/web-front/README.md` 已替换成真实项目说明。
 - 代码风格上，很多 Python 服务仍是全局变量 + 无限循环 + 脚本式结构。技术栈现代化了，但应用结构还没完全现代化。
 
 ### 2. 移除阿里云依赖，转 Docker / DigitalOcean / Cloudflare
@@ -54,9 +54,9 @@
 未完成/需收尾：
 
 - README 仍有旧阿里云部署说明。
-- `dataPy/uploadDataPy.py` 仍存在，按现架构应视为 deprecated 或删除。
+- `legacy/uploadDataPy.py` 仍存在，按现架构应视为 deprecated 或删除。
 - R2 方法名仍叫 `oss_put_obj` / `oss_get_obj`，这是兼容旧调用方的合理过渡，但长期建议改名为 storage/client 语义。
-- `afterTrade/webOssUpdate.py` 仍是“生成 JSON 上传对象存储给前端”的旧模式；新 `web-front` 已直接读 FastAPI API，这条链路后续要决定是保留做静态快照，还是完全废弃。
+- `services/post_trade/webOssUpdate.py` 仍是“生成 JSON 上传对象存储给前端”的旧模式；新 `frontend/web-front` 已直接读 FastAPI API，这条链路后续要决定是保留做静态快照，还是完全废弃。
 - DigitalOcean/Dokploy 的生产部署清单、健康检查、日志、备份、密钥管理还没有形成明确文档。
 
 ### 3. 理解交易系统，并实现自己的策略跑起来
@@ -65,16 +65,16 @@
 
 当前系统的核心思路：
 
-- `dataPy/` 负责采集行情，写入 ws 聚合服务器。
-- `ws-server/` 只做内存聚合和分发，不做策略。
-- `keyPy/` 负责关键风控和账户侧数据：持仓、余额、订单超时、止损、手续费/收入。
-- `simpleTrade.py` 是交易服务器 demo：从 ws-server 拉快照，维护本地 1m K 线，根据简单条件下单。
+- `services/collectors/` 负责采集行情，写入 ws 聚合服务器。
+- `ws/ws-server/` 只做内存聚合和分发，不做策略。
+- `services/risk/` 负责关键风控和账户侧数据：持仓、余额、订单超时、止损、手续费/收入。
+- `services/trading/simple_trade.py` 是交易服务器 demo：从 ws-server 拉快照，维护本地 1m K 线，根据简单条件下单。
 - `web_server/` 既是前端 API，也是订单、止盈止损、记录交易、机器状态的 HTTP 控制面。
-- `afterTrade/` 处理交易后数据、收益统计、持仓记录、展示数据。
+- `services/post_trade/` 处理交易后数据、收益统计、持仓记录、展示数据。
 
-策略真正该插入的位置是 `simpleTrade.py` 这一类“交易服务器”。原作者的设计不是提供一个策略框架，而是提供一套数据/风控/执行底座，策略需要自己在交易服务器里写。
+策略真正该插入的位置是 `services/trading/simple_trade.py` 这一类“交易服务器”。原作者的设计不是提供一个策略框架，而是提供一套数据/风控/执行底座，策略需要自己在交易服务器里写。
 
-当前 `simpleTrade.py` 的策略逻辑很薄：
+当前 `services/trading/simple_trade.py` 的策略逻辑很薄：
 
 - 每分钟同步一次完整 1m K 线。
 - 高频从 ws-server 获取聚合快照 `B`，更新本地 tick 和本地 K 线。
@@ -100,7 +100,7 @@ class Strategy:
 
 已经完成：
 
-- `ws-server/` 已实现 Rust 版 WebSocket 聚合服务器。
+- `ws/ws-server/` 已实现 Rust 版 WebSocket 聚合服务器。
 - 使用 `tokio` + `tokio-tungstenite`。
 - 兼容旧 C++ 协议，包括魔术字符串和 `A/B/E/F/G` 命令。
 - 使用 HashMap 替代固定数组上限。
@@ -110,9 +110,9 @@ class Strategy:
 
 未完成/需收尾：
 
-- `wsServer.cpp` 仍在仓库中。可以保留一段时间作为协议参考，但应标记为 legacy，最终删除。
+- `legacy/wsServer.cpp` 仍在仓库中。可以保留一段时间作为协议参考，但应标记为 legacy，最终删除。
 - Python 客户端仍使用旧魔术字符串协议。Rust 文档里提到的新可读协议是 Phase 2，但当前仍以兼容模式为主。
-- `CLAUDE.md` 已把 `wsServer.cpp` 标为 deprecated；README 还没有同步现代化。
+- `CLAUDE.md` 和 README 已把 `legacy/wsServer.cpp` 标为 deprecated/reference-only。
 
 ### 5. 边修改边理解量化交易世界
 
@@ -143,19 +143,19 @@ class Strategy:
 Binance 行情/账户 API
         |
         v
-dataPy/keyPy 采集与风控服务
+services/collectors + services/risk 采集与风控服务
         |
         v
-ws-server 内存聚合
+ws/ws-server 内存聚合
         |
         v
-交易服务器 simpleTrade.py / 未来 strategy runner
+交易服务器 services/trading/simple_trade.py / 未来 strategy runner
         |
         v
 Binance Futures 下单
         |
         v
-web_server + afterTrade + PostgreSQL + web-front 展示与审计
+web_server + services/post_trade + PostgreSQL + frontend/web-front 展示与审计
 ```
 
 其中 `ws-server` 是“快数据平面”，PostgreSQL 是“慢数据和审计平面”，FastAPI 是“控制面和展示 API”，交易服务器是“策略和执行入口”。
@@ -168,13 +168,16 @@ web_server + afterTrade + PostgreSQL + web-front 展示与审计
 
 目标：让新旧架构边界清晰，不再 lost。
 
+状态：**已完成当前阶段。** 当前主路径已经按系统职责整理为 `services/`、`frontend/`、`ws/`、`legacy/`，并通过本地测试、构建和 Docker Compose 启动验收。
+
 建议任务：
 
-- 更新 README，明确新主路径：`uv`、PostgreSQL、FastAPI、Rust ws-server、web-front、Docker/Podman。
-- 给 `webServer.py`、`wsServer.cpp`、`react-front/`、`dataPy/uploadDataPy.py` 加强 deprecated 标记，或建立删除 issue。
-- 替换 `web-front/README.md` 模板内容。
-- 在 `docs/` 里把已完成计划标注为 completed，未完成项转成一个短的 roadmap。
-- 修复 `tests/test_web_server.py` 的 route 列表未包含 dashboard router 的认知偏差，或明确拆分 dashboard tests。
+- ~~更新 README，明确新主路径：`uv`、PostgreSQL、FastAPI、Rust ws-server、frontend/web-front、Docker/Podman。~~
+- ~~给 `legacy/webServer.py`、`legacy/wsServer.cpp`、`legacy/react-front/`、`legacy/uploadDataPy.py` 加强 deprecated 标记。~~
+- ~~替换 `frontend/web-front/README.md` 模板内容。~~
+- ~~在 `docs/` 里把已完成计划标注为 completed，未完成项转成一个短的 roadmap。~~
+- ~~修复 `tests/test_web_server.py` 的 route 列表未包含 dashboard router 的认知偏差，或明确拆分 dashboard tests。~~
+- ~~按方案 B 完成仓库目录重组，并保留 `web_server/`、`app/`、`infra_client.py` 等根级 Python 边界，避免把目录清理扩大成包装迁移。~~
 
 ### Phase 2：跑通本地闭环
 
@@ -185,7 +188,7 @@ web_server + afterTrade + PostgreSQL + web-front 展示与审计
 - 固化一条本地启动脚本或 Makefile：启动 postgres、迁移、seed demo data、启动 backend、启动 frontend。
 - 为 `ws-server` 增加一个 Python smoke producer/consumer：写入 tick/kline/position/balance，再读取 `B` 验证格式。
 - 增加 dry-run 交易模式：策略产生订单意图，但不调用 Binance，只写入日志/数据库。
-- 让 `simpleTrade.py` 在 dry-run 下可以运行至少一个完整循环。
+- 让 `services/trading/simple_trade.py` 在 dry-run 下可以运行至少一个完整循环。
 
 ### Phase 3：抽出策略运行器
 
@@ -193,12 +196,12 @@ web_server + afterTrade + PostgreSQL + web-front 展示与审计
 
 建议任务：
 
-- 新建 `strategy/` 或 `trading/strategy_runner.py`。
-- 从 `simpleTrade.py` 拆出三个边界：
+- 新建 `strategy/` 或 `services/trading/strategy_runner.py`。
+- 从 `services/trading/simple_trade.py` 拆出三个边界：
   - market data adapter：负责从 ws-server 解析快照。
   - execution adapter：负责下单/撤单/重试/记录。
   - strategy：只根据上下文返回 signal。
-- 保留 `simpleTrade.py` 作为 demo 策略，但让它调用新 runner。
+- 保留 `services/trading/simple_trade.py` 作为 demo 策略，但让它调用新 runner。
 - 增加策略单元测试：给定 kline/position，验证输出 signal。
 - 增加 paper trading 模式，先生成模拟成交和 PnL。
 

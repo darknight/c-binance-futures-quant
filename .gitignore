@@ -6,6 +6,6 @@ __pycache__/
 .claude/
 .env
 user_config.json
-ws-server/target/
-web-front/node_modules/
-web-front/dist/
+ws/ws-server/target/
+frontend/web-front/node_modules/
+frontend/web-front/dist/

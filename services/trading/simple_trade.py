@@ -44,9 +44,18 @@ ORDER_ID_INDEX  = random.randint(1,100000)
 
 TRADE_SYMBOL_ARR =  []
 
-response = requests.request("POST", PUBLIC_SERVER_IP+"get_symbol_index", timeout=3).json()
+def loadTradeSymbols():
+    for _ in range(30):
+        try:
+            response = requests.request("POST", PUBLIC_SERVER_IP+"get_symbol_index", timeout=3).json()
+            if response.get("s") == "ok":
+                return response.get("d", [])
+        except Exception as e:
+            print(e)
+        time.sleep(1)
+    return []
 
-TRADE_SYMBOL_ARR = response["d"]
+TRADE_SYMBOL_ARR = loadTradeSymbols()
 
 ONE_MIN_KLINE_OBJ_ARR = []
 
@@ -100,6 +109,9 @@ def getTickData():
 
 
     dataStr = FUNCTION_CLIENT.get_from_ws_a("B")
+    dataArr = dataStr.split("*")
+    if len(dataArr) < 5 or dataArr[0] == "" or dataArr[1] == "":
+        return
 
 
     if now - LAST_DATA_UPDATE_TS>30000:
@@ -108,7 +120,6 @@ def getTickData():
         UPDATE_DATA_STR = True
         LAST_DATA_UPDATE_TS = now
         LAST_DATA_STR = dataStr
-        dataArr = dataStr.split("*")
 
 
         ACCOUNT_BALANCE_VALUE = float(dataArr[4])
@@ -244,9 +255,17 @@ def getTickData():
 
 def getOneMinData():
     global ONE_MIN_KLINE_OBJ_ARR,TRADE_SYMBOL_ARR,FUNCTION_CLIENT
+    if not TRADE_SYMBOL_ARR:
+        TRADE_SYMBOL_ARR = loadTradeSymbols()
+    if not TRADE_SYMBOL_ARR:
+        return
     dataStr = FUNCTION_CLIENT.get_from_ws_a("A")
+    if not dataStr:
+        return
     newKlineDataObjArr = []
     klineArr = dataStr.split("@")
+    if len(klineArr) != len(TRADE_SYMBOL_ARR):
+        return
 
 
     for a in range(len(klineArr)):

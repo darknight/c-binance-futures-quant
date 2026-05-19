@@ -5,43 +5,44 @@ Binance Futures quantitative trading framework. The current maintained path is a
 - Python services managed by `uv`
 - PostgreSQL + SQLModel + Alembic
 - FastAPI backend in `web_server/`
-- Rust WebSocket aggregation server in `ws-server/`
-- React 19 + Vite dashboard in `web-front/`
+- Rust WebSocket aggregation server in `ws/ws-server/`
+- React 19 + Vite dashboard in `frontend/web-front/`
 - Docker Compose / Podman local development flow
 - Environment-based configuration via `.env`
 
-The project provides infrastructure for data collection, risk control, execution, and monitoring. It does not provide a production trading strategy. `simpleTrade.py` is only a demo strategy runner and should not be treated as profitable logic.
+The project provides infrastructure for data collection, risk control, execution, and monitoring. It does not provide a production trading strategy. `services/trading/simple_trade.py` is only a demo strategy runner and should not be treated as profitable logic.
 
 ## Current Architecture
 
 ```text
 [Distributed Python Data Collectors] -> [Rust ws-server] -> [Trading Servers]
-  tick / kline / account / risk           in-memory hub       simpleTrade.py
+  services/collectors + risk              in-memory hub       services/trading/simple_trade.py
                                                                   |
                                                                   v
                                                         Binance Futures API
 
-[FastAPI web_server] -> PostgreSQL / dashboard APIs -> [web-front]
+[FastAPI web_server] -> PostgreSQL / dashboard APIs -> [frontend/web-front]
 ```
 
 Key paths:
 
 | Path | Status | Purpose |
 | ---- | ------ | ------- |
-| `ws-server/` | Active | Rust WebSocket aggregation server replacing legacy `wsServer.cpp` |
+| `ws/ws-server/` | Active | Rust WebSocket aggregation server replacing legacy `legacy/wsServer.cpp` |
 | `web_server/` | Active | FastAPI backend and control-plane APIs |
-| `web-front/` | Active | React 19 dashboard reading FastAPI APIs |
+| `frontend/web-front/` | Active | React 19 dashboard reading FastAPI APIs |
 | `infra_client.py` | Active | Shared infrastructure client for DB, WebSocket, Telegram, R2, Binance routing |
 | `settings.py` | Active | `.env`-backed pydantic settings |
 | `app/models/` | Active | SQLModel database models |
 | `alembic/` | Active | PostgreSQL schema migrations |
-| `dataPy/` | Active legacy style | Distributed data collectors; still script-style services |
-| `keyPy/` | Active legacy style | Position, balance, order timeout, stop-loss, commission, and risk services |
-| `simpleTrade.py` | Demo | Example trading server; not a strategy framework yet |
-| `webServer.py` | Deprecated | Legacy Bottle backend, kept as reference |
-| `wsServer.cpp` | Deprecated | Legacy C++ aggregation server, kept as protocol reference |
-| `react-front/` | Deprecated | Legacy React 16 frontend, kept until owner approves deletion |
-| `dataPy/uploadDataPy.py` | Deprecated | SSH/Aliyun deployment script, superseded by container deployment |
+| `services/collectors/` | Active legacy style | Distributed data collectors; still script-style services |
+| `services/risk/` | Active legacy style | Position, balance, order timeout, stop-loss, commission, and risk services |
+| `services/post_trade/` | Active legacy style | Post-trade records and snapshot publishing |
+| `services/trading/simple_trade.py` | Demo | Example trading server; not a strategy framework yet |
+| `legacy/webServer.py` | Deprecated | Legacy Bottle backend, kept as reference |
+| `legacy/wsServer.cpp` | Deprecated | Legacy C++ aggregation server, kept as protocol reference |
+| `legacy/react-front/` | Deprecated | Legacy React 16 frontend, kept until owner approves deletion |
+| `legacy/uploadDataPy.py` | Deprecated | SSH/Aliyun deployment script, superseded by container deployment |
 
 ## Local Development
 
@@ -79,19 +80,19 @@ Apply migrations and optionally seed dashboard demo data:
 
 ```bash
 uv run alembic upgrade head
-uv run python scripts/seed_demo_dashboard_data.py
+PYTHONPATH=. uv run python scripts/seed_demo_dashboard_data.py
 ```
 
 Start the backend:
 
 ```bash
-uv run python run_web_server.py
+PYTHONPATH=. uv run python run_web_server.py
 ```
 
 In another terminal, start the frontend:
 
 ```bash
-cd web-front
+cd frontend/web-front
 npm install
 VITE_API_URL=http://localhost:8888 npm run dev
 ```
@@ -103,7 +104,7 @@ Note: backend startup currently calls Binance `exchangeInfo`, so local startup n
 ## Rust WebSocket Server
 
 ```bash
-cd ws-server
+cd ws/ws-server
 cargo run -- --port 3698 --log-level debug
 cargo test
 cargo clippy --all-targets
@@ -113,7 +114,7 @@ cargo fmt -- --check
 Production build:
 
 ```bash
-cd ws-server
+cd ws/ws-server
 cargo build --release
 nohup ./target/release/ws-server --port 3698 --log-level info >/dev/null &
 ```
@@ -169,7 +170,7 @@ See `docs/roadmap.md` for the current modernization roadmap. The next major work
 
 ## Legacy Upstream README
 
-The original upstream README is preserved below as historical architecture and trading-system context. Some details are now outdated: Aliyun deployment, MySQL, Bottle `webServer.py`, React 16 `react-front/`, C++ `wsServer.cpp`, OSS frontend delivery, and Feishu notification are no longer the maintained path.
+The original upstream README is preserved below as historical architecture and trading-system context. Some details are now outdated: Aliyun deployment, MySQL, Bottle `webServer.py`, React 16 `react-front/`, C++ `wsServer.cpp`, OSS frontend delivery, old root-level service paths, and Feishu notification are no longer the maintained path.
 
 [ENGLISH](https://github.com/Melelery/c-binance-future-quant/blob/main/README_EN.md)
 # 简介

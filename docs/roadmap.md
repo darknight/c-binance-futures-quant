@@ -8,8 +8,8 @@ This roadmap captures the current modernization state after the migration away f
 - Configuration: `.env` + `settings.py` with `pydantic-settings`
 - Database: PostgreSQL, SQLModel/SQLAlchemy, Alembic migrations
 - Backend: FastAPI in `web_server/`
-- Frontend: React 19 + Vite in `web-front/`
-- WebSocket aggregation: Rust `ws-server/`
+- Frontend: React 19 + Vite in `frontend/web-front/`
+- WebSocket aggregation: Rust `ws/ws-server/`
 - Notifications/storage: Telegram + Cloudflare R2-compatible S3 client
 - Local/container development: Docker Compose and documented Podman flow
 
@@ -23,19 +23,22 @@ Completed in this phase:
 
 - Root README now starts with the maintained architecture and local development flow.
 - Legacy upstream README content is preserved but marked as historical context.
-- `web-front/README.md` describes the actual dashboard instead of the Vite template.
+- `frontend/web-front/README.md` describes the actual dashboard instead of the Vite template.
+- Active runtime code is grouped by responsibility under `services/`, `frontend/`, and `ws/`, while deprecated references live under `legacy/`.
 - Legacy paths are explicitly marked as deprecated or reference-only:
-  - `webServer.py`
-  - `wsServer.cpp`
-  - `react-front/`
-  - `dataPy/uploadDataPy.py`
+  - `legacy/webServer.py`
+  - `legacy/wsServer.cpp`
+  - `legacy/react-front/`
+  - `legacy/uploadDataPy.py`
 - Web server route tests now include dashboard router registration.
+- The repository layout reorganization is recorded in `docs/plans/repo-layout-reorganization.md`.
 
 Deferred owner decisions:
 
-- Decide when `react-front/` can be deleted.
-- Decide when `wsServer.cpp` can move from protocol reference to removed legacy file.
-- Decide whether `afterTrade/webOssUpdate.py` remains as static snapshot publishing or is replaced by FastAPI/dashboard-only flows.
+- Decide when `legacy/react-front/` can be deleted.
+- Decide when `legacy/wsServer.cpp` can move from protocol reference to removed legacy file.
+- Decide whether `services/post_trade/webOssUpdate.py` remains as static snapshot publishing or is replaced by FastAPI/dashboard-only flows.
+- Decide whether `web_server/`, `app/`, and shared Python helpers should later move under a packaged backend namespace.
 
 ## Phase 2: Local dry-run loop
 
@@ -45,7 +48,7 @@ Suggested tasks:
 
 - Add a `ws-server` smoke producer/consumer that writes tick/kline/position/balance data and verifies the `B` snapshot format.
 - Add a dry-run trading mode that records order intent instead of calling Binance.
-- Make `simpleTrade.py` run at least one complete dry-run loop.
+- Make `services/trading/simple_trade.py` run at least one complete dry-run loop.
 - Provide one command or Makefile target for PostgreSQL, migrations, demo data, backend, and frontend.
 
 ## Phase 3: Strategy runner
@@ -62,7 +65,7 @@ class Strategy:
 
 Suggested tasks:
 
-- Extract market data adapter from `simpleTrade.py`.
+- Extract market data adapter from `services/trading/simple_trade.py`.
 - Extract execution adapter for order placement, cancellation, retries, and recording.
 - Keep strategy code focused on signal generation.
 - Add unit tests for strategy decisions from kline/position inputs.

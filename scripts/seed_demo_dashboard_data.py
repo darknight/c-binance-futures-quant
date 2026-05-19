@@ -26,6 +26,7 @@ from app.models.income_day import IncomeDay
 from app.models.income_history_take import IncomeHistoryTake
 from app.models.position_record import PositionRecord
 from app.models.trade_record import TradeRecord
+from app.models.trade_symbol import TradeSymbol
 from settings import settings
 
 
@@ -161,14 +162,33 @@ def seed_trade_records(session: Session, now: int) -> None:
         )
 
 
+def seed_trade_symbols(session: Session) -> None:
+    for idx, symbol in enumerate(SYMBOLS):
+        coin = symbol.removesuffix("USDT")
+        session.add(
+            TradeSymbol(
+                symbol=symbol,
+                coin=coin,
+                quote="USDT",
+                status="yes",
+                index=idx,
+                default_show=True,
+                link_symbol_arr=[],
+                quote_volume=dec(0),
+                quote_volume_rank=idx + 1,
+            )
+        )
+
+
 def main() -> None:
     assert_safe_database()
     now = int(time.time())
     with Session(engine) as session:
-        for model in (PositionRecord, Income, IncomeDay, IncomeHistoryTake, TradeRecord):
+        for model in (PositionRecord, Income, IncomeDay, IncomeHistoryTake, TradeRecord, TradeSymbol):
             session.exec(delete(model))
         session.commit()
 
+        seed_trade_symbols(session)
         seed_position_records(session, now)
         seed_income(session, now)
         seed_trade_records(session, now)

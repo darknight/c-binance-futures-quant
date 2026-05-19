@@ -183,4 +183,11 @@ def on_open(ws):
     print("Opened connection")
 
 if __name__ == "__main__":
-    connectWs()
+    while True:
+        if not LISTEN_KEY:
+            time.sleep(5)
+            updateKey()
+            continue
+        connectWs()
+        time.sleep(5)
+        updateKey()

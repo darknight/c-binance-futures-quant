@@ -4,8 +4,10 @@
 __pycache__/
 *.pyc
 *.pyo
-react-front/node_modules/
-ws-server/target/
+legacy/react-front/node_modules/
+frontend/web-front/node_modules/
+frontend/web-front/dist/
+ws/ws-server/target/
 .claude/
 docs/
 tests/

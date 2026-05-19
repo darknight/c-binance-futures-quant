@@ -1,6 +1,6 @@
 # DEPRECATED
 
-This React 16 frontend is kept as legacy reference only. The active dashboard is `../web-front/` and should be used for all new development.
+This React 16 frontend is kept as legacy reference only. The active dashboard is `../../frontend/web-front/` and should be used for all new development.
 
 ---
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Binance Futures quantitative trading framework with distributed architecture. Uses a C++ WebSocket aggregation server as the central data hub, with many distributed Python servers for data collection, risk control, and trading. The framework handles data ingestion, risk management, and trade execution — but does not include specific trading strategies.
+Binance Futures quantitative trading framework with distributed architecture. Uses the Rust WebSocket aggregation server as the central data hub, with many distributed Python servers for data collection, risk control, and trading. The framework handles data ingestion, risk management, and trade execution — but does not include specific trading strategies.
 
 Production environment: Ubuntu 22.04, Python 3.14+
 
@@ -14,31 +14,31 @@ Package management: uv (pyproject.toml + uv.lock)
 
 ```
 [Distributed Python Data Collectors] → [WS Aggregation Server] → [Trading Servers]
-  (tick, kline, position, balance)       (ws-server / wsServer)     (simpleTrade.py)
+  (collectors, risk, post-trade)         (ws/ws-server)             (services/trading/simple_trade.py)
                                                                             ↓
                                                                     [Binance Futures API]
 ```
 
-- **ws-server/** — Rust rewrite of the WebSocket aggregation server (replaces wsServer.cpp). Uses tokio + tokio-tungstenite. HashMap-based storage (no fixed array limits), structured logging (tracing), optional token auth, graceful shutdown. Protocol-compatible with the C++ version — Python clients require zero changes.
-- **wsServer.cpp** — Legacy C++ WebSocket server (being replaced by ws-server/). Compiled with: `g++ wsServer.cpp -o wsServer.out -lboost_system` (requires websocketpp + boost)
+- **ws/ws-server/** — Rust rewrite of the WebSocket aggregation server (replaces `legacy/wsServer.cpp`). Uses tokio + tokio-tungstenite. HashMap-based storage (no fixed array limits), structured logging (tracing), optional token auth, graceful shutdown. Protocol-compatible with the C++ version — Python clients require zero changes.
+- **legacy/wsServer.cpp** — Legacy C++ WebSocket server reference. Compiled with: `g++ legacy/wsServer.cpp -o wsServer.out -lboost_system` (requires websocketpp + boost)
 - **infra_client.py** — `InfraClient` class providing PostgreSQL via SQLAlchemy/SQLModel, WebSocket (A/B channels), Telegram notifications, Cloudflare R2 object storage, and Binance order routing
 - **settings.py** — pydantic-settings based configuration, reads from `.env` file. Template: `.env.example`
 - **binance_f/** — Modified Binance Futures Python SDK (forked from official)
 - **web_server/** — FastAPI-based HTTP server providing REST APIs for order management, position queries, trade recording, and machine status. Entry point: `run_web_server.py`
-- **webServer.py** — Legacy Bottle-based HTTP server (deprecated, kept as reference). Replaced by `web_server/`
+- **legacy/webServer.py** — Legacy Bottle-based HTTP server (deprecated, kept as reference). Replaced by `web_server/`
 
 ## Key Modules
 
 | Directory | Purpose |
 |-----------|---------|
-| `dataPy/` | Distributed data collectors (tick, kline) that feed into wsServer. Each instance identified by `SERVER_NAME` and `MACHINE_INDEX` env vars |
-| `keyPy/` | Critical operations: position monitoring (`getBinancePosition`, `positionRisk`, `wsPosition`), stop-loss (`makerStopLoss`), order timeout (`checkTimeoutOrders`), commission tracking |
-| `afterTrade/` | Post-trade data processing and OSS upload for frontend display |
-| `react-front/` | **DEPRECATED** — Legacy React 16 frontend. Replaced by `web-front/`. Kept for reference until new frontend is stable |
-| `web-front/` | React 19 frontend dashboard (Vite, TypeScript, antd 5, Zustand, ECharts). Fetches data from FastAPI backend API |
+| `services/collectors/` | Distributed data collectors (tick, kline) that feed into wsServer. Each instance identified by `SERVER_NAME` and `MACHINE_INDEX` env vars |
+| `services/risk/` | Critical operations: position monitoring (`getBinancePosition`, `positionRisk`, `wsPosition`), stop-loss (`makerStopLoss`), order timeout (`checkTimeoutOrders`), commission tracking |
+| `services/post_trade/` | Post-trade data processing and OSS/R2 upload for frontend display |
+| `legacy/react-front/` | **DEPRECATED** — Legacy React 16 frontend. Replaced by `frontend/web-front/`. Kept for reference until new frontend is stable |
+| `frontend/web-front/` | React 19 frontend dashboard (Vite, TypeScript, antd 5, Zustand, ECharts). Fetches data from FastAPI backend API |
 | `updateSymbol/` | SQL scripts and Python for managing the `trade_symbol` table in PostgreSQL |
 | `tool/` | Speed test utilities for Binance API and tick data |
-| `ws-server/` | Rust WebSocket aggregation server (tokio + tokio-tungstenite). Replaces wsServer.cpp |
+| `ws/ws-server/` | Rust WebSocket aggregation server (tokio + tokio-tungstenite). Replaces `legacy/wsServer.cpp` |
 | `web_server/` | FastAPI HTTP server: `app.py` (app factory), `state.py` (shared state), `binance_helpers.py` (Binance API utils), `routers/` (9 route modules incl. `dashboard.py` for frontend KPI/profit APIs) |
 | `app/` | Python package: `database.py` (SQLAlchemy engine + session factory), `app/models/` (15 SQLModel models) |
 | `alembic/` | Alembic migration environment and versioned migration scripts |
@@ -46,9 +46,9 @@ Package management: uv (pyproject.toml + uv.lock)
 
 ## Build & Run Commands
 
-### Rust Aggregation Server (ws-server/)
+### Rust Aggregation Server (ws/ws-server/)
 ```bash
-cd ws-server
+cd ws/ws-server
 
 # Development
 cargo run -- --port 3698 --log-level debug
@@ -67,7 +67,7 @@ nohup ./target/release/ws-server --port 3698 --log-level info >/dev/null &
 
 ### Legacy C++ Aggregation Server (deprecated)
 ```bash
-g++ wsServer.cpp -o wsServer.out -lboost_system
+g++ legacy/wsServer.cpp -o wsServer.out -lboost_system
 nohup ./wsServer.out >/dev/null &
 ```
 
@@ -77,13 +77,14 @@ nohup ./wsServer.out >/dev/null &
 uv sync
 
 # Run any Python service locally
-uv run python run_web_server.py
+PYTHONPATH=. uv run python run_web_server.py
+PYTHONPATH=. uv run python services/trading/simple_trade.py
 
 # Each Python file runs as its own service on a separate server/IP
 # Remote deployment still uses shebang (#!/usr/bin/env python3):
-nohup ./webServer.py >/dev/null &
+nohup ./legacy/webServer.py >/dev/null &
 ```
-Legacy deployment used `dataPy/uploadDataPy.py` (deprecated) to distribute across Aliyun servers. Current deployment via Dokploy (Docker).
+Legacy deployment used `legacy/uploadDataPy.py` (deprecated) to distribute across Aliyun servers. Current deployment via Dokploy (Docker).
 
 ### Local Full-Stack Development (Podman)
 
@@ -106,16 +107,16 @@ podman start quant-postgres
 uv run alembic upgrade head
 
 # Optional: seed deterministic dashboard demo data for frontend development
-uv run python scripts/seed_demo_dashboard_data.py
+PYTHONPATH=. uv run python scripts/seed_demo_dashboard_data.py
 
 # Start FastAPI backend on http://localhost:8888
-uv run python run_web_server.py
+PYTHONPATH=. uv run python run_web_server.py
 ```
 
 In another terminal:
 
 ```bash
-cd web-front
+cd frontend/web-front
 npm install
 VITE_API_URL=http://localhost:8888 npm run dev
 ```
@@ -137,20 +138,20 @@ uv run alembic revision --autogenerate -m "description"
 uv run pytest tests/ -v
 ```
 
-### Legacy React Frontend (react-front/) — DEPRECATED
+### Legacy React Frontend (legacy/react-front/) — DEPRECATED
 ```bash
-cd react-front
+cd legacy/react-front
 npm install
 
 # QUANT_CDN_URL is required — set it in .env or pass directly
-source ../.env
+source ../../.env
 QUANT_CDN_URL=$QUANT_CDN_URL npm start          # dev server
 QUANT_CDN_URL=$QUANT_CDN_URL npm run build      # production build
 ```
 
-### New React Frontend (web-front/)
+### New React Frontend (frontend/web-front/)
 ```bash
-cd web-front
+cd frontend/web-front
 npm install
 
 # VITE_API_URL is required — set it in .env or pass directly
@@ -197,12 +198,12 @@ docker compose down -v
 
 ## Important Notes
 
-- `simpleTrade.py` is a demo only (long when 1min gain >1%, close when 1min drop <-0.5%). Pay attention to `updateSymbolInfo()` for price/quantity precision handling
+- `services/trading/simple_trade.py` is a demo only (long when 1min gain >1%, close when 1min drop <-0.5%). Pay attention to `updateSymbolInfo()` for price/quantity precision handling
 - The `binance_f/` SDK is a modified fork — not the vanilla Binance SDK
 - Data collectors are configured via environment variables (`SERVER_NAME`, `MACHINE_INDEX`, `TICK_INSTANCE_COUNT`) for multi-instance sharding
 - WebSocket channels A and B in `InfraClient` connect to the aggregation server at addresses configured in `.env` (`WS_ADDRESS_A`, `WS_ADDRESS_B`)
 - Configuration is managed via `.env` file (not committed to git). See `.env.example` for template
-- Frontend CDN URL is injected at webpack build time via `QUANT_CDN_URL` env var (→ `CDN_BASE_URL` global). Never hardcode domains in frontend source
+- Legacy frontend CDN URL is injected at webpack build time via `QUANT_CDN_URL` env var (→ `CDN_BASE_URL` global). Never hardcode domains in frontend source
 - Binance API keys are configured in `.env` as `BINANCE_API_ARR` (JSON array supporting multiple keys for rate limit distribution)
 - UI/trading config (`hot_key_config_obj`, `state_config_obj`) is stored in `user_config.json` (runtime-writable, not committed to git)
 - The User table has been removed — the project is single-user, no registration/login system

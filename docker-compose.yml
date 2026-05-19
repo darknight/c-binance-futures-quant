@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: quant
       POSTGRES_DB: quant
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     ports:
       - "15432:5432"
     healthcheck:
@@ -19,7 +19,7 @@ services:
 
   ws-server:
     build:
-      context: ./ws-server
+      context: ./ws/ws-server
       dockerfile: Dockerfile
     ports:
       - "3698:3698"
@@ -53,7 +53,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python dataPy/tickToWs.py
+    command: uv run python services/collectors/tickToWs.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -72,7 +72,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python dataPy/oneMinKlineToWs.py
+    command: uv run python services/collectors/oneMinKlineToWs.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -90,7 +90,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python dataPy/specialOneMinKlineToWs.py
+    command: uv run python services/collectors/specialOneMinKlineToWs.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -110,7 +110,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python simpleTrade.py
+    command: uv run python services/trading/simple_trade.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -134,7 +134,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python keyPy/getBinancePosition.py
+    command: uv run python services/risk/getBinancePosition.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -152,7 +152,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python keyPy/checkTimeoutOrders.py
+    command: uv run python services/risk/checkTimeoutOrders.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -170,7 +170,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python keyPy/commission.py
+    command: uv run python services/risk/commission.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -185,7 +185,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python keyPy/wsPosition.py
+    command: uv run python services/risk/wsPosition.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -200,7 +200,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python keyPy/makerStopLoss.py
+    command: uv run python services/risk/makerStopLoss.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -215,7 +215,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python keyPy/positionRisk.py
+    command: uv run python services/risk/positionRisk.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
@@ -232,10 +232,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python afterTrade/webOssUpdate.py
+    command: uv run python services/post_trade/webOssUpdate.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WEB_ADDRESS: web-server
+      CANCEL_WEB_ADDRESS: web-server
     depends_on:
       postgres:
         condition: service_healthy
@@ -245,11 +247,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python afterTrade/positionRecord.py
+    command: uv run python services/post_trade/positionRecord.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
       WS_ADDRESS_A: ws://ws-server:3698
+      WEB_ADDRESS: web-server
+      CANCEL_WEB_ADDRESS: web-server
     depends_on:
       postgres:
         condition: service_healthy
@@ -261,10 +265,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uv run python afterTrade/tradesUpdate.py
+    command: uv run python services/post_trade/tradesUpdate.py
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://quant:quant@postgres:5432/quant
+      WEB_ADDRESS: web-server
+      CANCEL_WEB_ADDRESS: web-server
     depends_on:
       postgres:
         condition: service_healthy

@@ -11,7 +11,7 @@ Active React dashboard for the Binance Futures quant framework.
 - Zustand
 - ECharts
 
-This frontend replaces the deprecated `react-front/` app. The maintained data path is FastAPI (`web_server/`) instead of the old OSS JSON snapshot flow.
+This frontend replaces the deprecated `../../legacy/react-front/` app. The maintained data path is FastAPI (`web_server/`) instead of the old OSS JSON snapshot flow.
 
 ## Configuration
 
@@ -71,4 +71,4 @@ The backend currently calls Binance `exchangeInfo` during startup. Local develop
 
 ## Legacy Frontend
 
-`../react-front/` is kept as reference only. Do not add new dashboard features there.
+`../../legacy/react-front/` is kept as reference only. Do not add new dashboard features there.
