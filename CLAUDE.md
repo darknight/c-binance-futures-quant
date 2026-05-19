@@ -208,6 +208,20 @@ docker compose down -v
 - The User table has been removed — the project is single-user, no registration/login system
 - All database queries use SQLModel ORM via `InfraClient.get_session()` context manager — no raw SQL. Legacy `mysql_*` methods have been removed
 
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues for `darknight/c-binance-futures-quant`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default mattpocock/skills triage labels unchanged. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repo: read root `CONTEXT.md` and root `docs/adr/` when they exist. See `docs/agents/domain.md`.
+
 ## Rules
 
 - **Acceptance criteria**: Every code change must compile, pass all tests, and run correctly locally before considering it done
